@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* === 色彩系统 === */
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --primary: #1677FF;
+  --primary-hover: #1a4fa3;
+  --primary-light: #e6f4ff;
+  --primary-foreground: #ffffff;
+  --secondary: #334155;
+  --secondary-foreground: #ffffff;
+  --muted: #f8fafc;
+  --muted-foreground: #64748b;
+  --accent: #e6f4ff;
+  --accent-foreground: #1677FF;
+  --destructive: #dc2626;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --ring: #1677FF;
+  --success: #16a34a;
+  --warning: #d97706;
+  --error: #dc2626;
+
+  /* 文字层级 */
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-subtle: #94a3b8;
+
+  /* 表面色 */
+  --surface: #f8fafc;
+  --surface-elevated: #ffffff;
+
+  /* === 圆角系统 === */
+  --radius-base: 8px;
+
+  /* === 字体系统 === */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "Menlo", "Monaco", monospace;
+
+  /* === 阴影系统 === */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.dark {
+  /* === 暗色模式色彩 === */
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-light: rgba(59, 130, 246, 0.15);
+  --primary-foreground: #ffffff;
+  --secondary: #94a3b8;
+  --secondary-foreground: #0f172a;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --accent: rgba(59, 130, 246, 0.15);
+  --accent-foreground: #93c5fd;
+  --destructive: #ef4444;
+  --border: #1e293b;
+  --border-strong: #334155;
+  --ring: #3b82f6;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --error: #ef4444;
+
+  /* 暗色文字层级 */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-subtle: #64748b;
+
+  /* 暗色表面 */
+  --surface: #1e293b;
+  --surface-elevated: #1e293b;
+
+  /* 暗色阴影 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.2);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.25);
+}
+
+@theme inline {
+  /* 色彩 */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+
+  /* 文字语义色 */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+
+  /* 表面 */
+  --color-surface: var(--surface);
+
+  /* 圆角 */
+  --radius-xs: calc(var(--radius-base) * 0.5);   /* 4px */
+  --radius-sm: calc(var(--radius-base) * 0.75);  /* 6px */
+  --radius-md: var(--radius-base);                /* 8px */
+  --radius-lg: calc(var(--radius-base) * 1.5);    /* 12px */
+  --radius-xl: calc(var(--radius-base) * 2);      /* 16px */
+  --radius-preview: 6px;
+  --radius-pill: 9999px;
+
+  /* 字体 */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* 阴影 */
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+}

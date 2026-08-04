@@ -183,6 +183,10 @@ export interface DashboardChart {
   datasetName: string;
   dimensions: string[];
   metrics: string[];
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
 }
 
 export interface DashboardItem {

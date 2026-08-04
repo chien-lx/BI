@@ -26,6 +26,8 @@ import OperationLogPage from './pages/OperationLogPage';
 import TenantManagePage from './pages/TenantManagePage';
 import MetricsPage from './pages/MetricsPage';
 import './style.css';
+import { AnnotationViewer, type AnnotationSourceDocument } from '@axhub/annotation';
+import annotationSourceDocument from './annotation-source.json';
 
 const pageMap: Record<string, React.ComponentType> = {
   portal: PortalPage,
@@ -94,9 +96,22 @@ export default function DataAnalysisEngine() {
 
   if (isFullScreenPage) {
     return (
-      <div style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <PageComponent />
-      </div>
+      <>
+        <div style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <PageComponent />
+              </div>
+        <AnnotationViewer
+          source={annotationSourceDocument as unknown as AnnotationSourceDocument}
+          options={{
+            currentPageId: "data-analysis-engine",
+            toolbarEdge: 'right',
+            showToolbar: true,
+            showThemeToggle: true,
+            showColorFilter: true,
+            emptyWhenNoData: true,
+          }}
+        />
+      </>
     );
   }
 

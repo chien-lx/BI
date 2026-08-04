@@ -14,7 +14,11 @@ import SelfServicePage from './pages/SelfServicePage';
 import DataExplorePage from './pages/DataExplorePage';
 import ChartManagePage from './pages/ChartManagePage';
 import ReportPage from './pages/ReportPage';
+import ReportConfigPage from './pages/report/config';
+import ReportPreviewPage from './pages/report/preview';
 import DashboardPage from './pages/DashboardPage';
+import DashboardConfigPage from './pages/dashboard/config';
+import DashboardPreviewPage from './pages/dashboard/preview';
 import DataScreenPage from './pages/DataScreenPage';
 import UserManagePage from './pages/UserManagePage';
 import RoleManagePage from './pages/RoleManagePage';
@@ -33,7 +37,11 @@ const pageMap: Record<string, React.ComponentType> = {
   'data-explore': DataExplorePage,
   'chart-manage': ChartManagePage,
   report: ReportPage,
+  'report-config': ReportConfigPage,
+  'report-preview': ReportPreviewPage,
   dashboard: DashboardPage,
+  'dashboard-config': DashboardConfigPage,
+  'dashboard-preview': DashboardPreviewPage,
   'data-screen': DataScreenPage,
   'user-manage': UserManagePage,
   'role-manage': RoleManagePage,
@@ -52,7 +60,11 @@ const route = defineHashPageRoute(
     { id: 'data-explore', title: '数据探查' },
     { id: 'chart-manage', title: '图表管理' },
     { id: 'report', title: '报表' },
+    { id: 'report-config', title: '报表配置' },
+    { id: 'report-preview', title: '报表预览' },
     { id: 'dashboard', title: '仪表盘' },
+    { id: 'dashboard-config', title: '仪表盘配置' },
+    { id: 'dashboard-preview', title: '仪表盘预览' },
     { id: 'data-screen', title: '数据大屏' },
     { id: 'user-manage', title: '用户管理' },
     { id: 'role-manage', title: '角色管理' },
@@ -69,7 +81,24 @@ export default function DataAnalysisEngine() {
   const PageComponent = pageMap[activePage] || PortalPage;
 
   // 对于二级页面，高亮父级菜单
-  const layoutActivePage = activePage.startsWith('dataset-') ? 'dataset' : activePage;
+  const layoutActivePage = activePage.startsWith('dataset-')
+    ? 'dataset'
+    : activePage.startsWith('report-')
+    ? 'report'
+    : activePage.startsWith('dashboard-')
+    ? 'dashboard'
+    : activePage;
+
+  // 仪表盘配置/预览页为全屏二级页面，去掉侧边导航和主布局边距
+  const isFullScreenPage = activePage === 'dashboard-config' || activePage === 'dashboard-preview';
+
+  if (isFullScreenPage) {
+    return (
+      <div style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <PageComponent />
+      </div>
+    );
+  }
 
   return (
     <Layout activePage={layoutActivePage as PageId} onNavigate={(p) => setPage(p)}>

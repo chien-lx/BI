@@ -30,7 +30,8 @@ export default function PortalPage() {
   const [delOpen, setDelOpen] = useState(false);
   const [delTarget, setDelTarget] = useState<{ id: string; name: string } | null>(null);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
+  const [jumpPage, setJumpPage] = useState('');
 
   const filtered = useMemo(() => {
     return portalAssets.filter((item) => {
@@ -74,7 +75,8 @@ export default function PortalPage() {
           </button>
         }
       />
-      <SearchFilter
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minHeight:0}}>
+      <div style={{marginBottom:16}}><SearchFilter
         placeholder="搜索资产名称、创建人..."
         value={search}
         onChange={setSearch}
@@ -91,17 +93,18 @@ export default function PortalPage() {
             ))}
           </div>
         }
-      />
-      <div style={{ background: '#fff', borderRadius: 'var(--dae-radius-lg)', border: '1px solid var(--dae-border)', overflow: 'hidden' }}>
-        <table className="dae-table">
+      /></div>
+      <div style={{flex:1,overflow:'auto',border:'1px solid var(--dae-border)',borderRadius:'var(--dae-radius-lg)',background:'#fff'}}>
+        <div style={{overflowX:'auto'}}>
+        <table className="dae-table" style={{margin:0}}>
           <thead>
             <tr>
-              <th>资产名称</th>
-              <th>类型</th>
-              <th>创建人</th>
-              <th>更新时间</th>
-              <th>状态</th>
-              <th style={{ width: 140 }}>操作</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>资产名称</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>类型</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>创建人</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>更新时间</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>状态</th>
+              <th style={{width:180,padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -109,23 +112,23 @@ export default function PortalPage() {
               const Icon = typeIconMap[item.type] || FileBarChart;
               return (
                 <tr key={item.id}>
-                  <td>
+                  <td title={item.name} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Icon size={16} style={{ color: 'var(--dae-primary)' }} />
                       <span style={{ fontWeight: 500 }}>{item.name}</span>
                     </div>
                   </td>
-                  <td>
+                  <td style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                     <span className="dae-tag dae-tag-blue">{item.typeLabel}</span>
                   </td>
-                  <td>{item.creator}</td>
-                  <td>{item.updatedAt}</td>
-                  <td>
+                  <td title={item.creator} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.creator}</td>
+                  <td title={item.updatedAt} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.updatedAt}</td>
+                  <td style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                     <span className={`dae-tag ${item.status === 'published' ? 'dae-tag-green' : 'dae-tag-gray'}`}>
                       {item.status === 'published' ? '已发布' : '草稿'}
                     </span>
                   </td>
-                  <td>
+                  <td style={{padding:'9px 14px'}}>
                     <div className="dae-table-actions">
                       <IconAction icon={<Eye size={16} />} label="查看" />
                       <IconAction icon={<Pencil size={16} />} label="编辑" />
@@ -137,6 +140,7 @@ export default function PortalPage() {
             })}
           </tbody>
         </table>
+        </div>
         {filtered.length === 0 && (
           <div className="dae-empty">
             <FileBarChart size={40} />
@@ -145,14 +149,44 @@ export default function PortalPage() {
         )}
       </div>
       {pagedData.length > 0 && (
-        <div className="dae-pagination">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)}>&lt;</button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <button key={p} className={p === page ? 'active' : ''} onClick={() => setPage(p)}>{p}</button>
-          ))}
-          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)}>&gt;</button>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 0',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', color: 'var(--dae-ink-secondary)' }}>
+            <span>每页</span>
+            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+              style={{ width:60, padding:'4px 6px', border:'1px solid var(--dae-border)', borderRadius:'var(--dae-radius-sm)', fontSize:'13px', background:'#fff', cursor:'pointer' }}>
+              {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <span>条 / 共 {filtered.length} 条</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+              style={{ minWidth:28, height:28, padding:'0 6px', borderRadius:'var(--dae-radius-sm)', border:'1px solid var(--dae-border)', background:'#fff',
+                color: page===1 ? 'var(--dae-ink-subtle)' : 'var(--dae-ink-secondary)', fontSize:'12px', cursor: page===1?'not-allowed':'pointer' }}
+            >&lt;</button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pn) => (
+              <button key={pn} onClick={() => setPage(pn)} style={{
+                minWidth:28, height:28, padding:'0 6px', borderRadius:'var(--dae-radius-sm)',
+                border: page===pn ? '1px solid var(--dae-primary)' : '1px solid var(--dae-border)',
+                background: page===pn ? 'var(--dae-primary)' : '#fff',
+                color: page===pn ? '#fff' : 'var(--dae-ink-secondary)', fontSize:'12px', cursor:'pointer',
+              }}>{pn}</button>
+            ))}
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+              style={{ minWidth:28, height:28, padding:'0 6px', borderRadius:'var(--dae-radius-sm)', border:'1px solid var(--dae-border)', background:'#fff',
+                color: page===totalPages ? 'var(--dae-ink-subtle)' : 'var(--dae-ink-secondary)', fontSize:'12px', cursor: page===totalPages?'not-allowed':'pointer' }}
+            ></button>
+            <span style={{fontSize:'13px',color:'var(--dae-ink-secondary)',marginLeft:8}}>跳至</span>
+            <input type="text" value={jumpPage} onChange={(e)=>setJumpPage(e.target.value.replace(/\D/g,''))}
+              onKeyDown={(e)=>{ if(e.key==='Enter'){ const p=parseInt(jumpPage); if(p>=1&&p<=totalPages)setPage(p); } }}
+              style={{ width:44, height:28, padding:'0 6px', textAlign:'center', border:'1px solid var(--dae-border)', borderRadius:'var(--dae-radius-sm)', fontSize:'13px' }} />
+            <span style={{ fontSize:'13px', color:'var(--dae-ink-secondary)' }}>页</span>
+          </div>
         </div>
       )}
+      </div>
       <Drawer
         open={modalOpen}
         title="新建数据资产"

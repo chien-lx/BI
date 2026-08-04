@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Gauge, Eye, Pencil, Trash2, ShieldCheck } from 'lucide-react';
+import { Plus, Gauge, Eye, Pencil, Trash2, ShieldCheck, Copy, Settings } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import SearchFilter from '../components/SearchFilter';
 import Drawer from '../components/Drawer';
@@ -7,6 +7,7 @@ import PermissionDrawer from '../components/PermissionDrawer';
 import IconAction from '../components/IconAction';
 import DeleteConfirm from '../components/DeleteConfirm';
 import UserPermSelect from '../components/UserPermSelect';
+import StatusSwitch from '../components/StatusSwitch';
 import { dashboards, type DashboardItem } from '../data/mockData';
 
 export default function DashboardPage() {
@@ -18,11 +19,18 @@ export default function DashboardPage() {
   const [delOpen, setDelOpen] = useState(false);
   const [delTarget, setDelTarget] = useState<{ id: string; name: string } | null>(null);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
+  const [jumpPage, setJumpPage] = useState('');
   const [viewPerm, setViewPerm] = useState<string[]>([]);
   const [managePerm, setManagePerm] = useState<string[]>([]);
   const [viewOpen, setViewOpen] = useState(false);
   const [viewItem, setViewItem] = useState<DashboardItem | null>(null);
+  const [items, setItems] = useState<DashboardItem[]>(dashboards);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyTarget, setCopyTarget] = useState<DashboardItem | null>(null);
+  const [copyName, setCopyName] = useState('');
+  const [copyViewPerm, setCopyViewPerm] = useState<string[]>([]);
+  const [copyManagePerm, setCopyManagePerm] = useState<string[]>([]);
 
   const openView = (item: DashboardItem) => {
     setViewItem(item);
@@ -35,14 +43,11 @@ export default function DashboardPage() {
   };
 
   const filtered = useMemo(() => {
-    return dashboards.filter((item) => item.name.includes(search) || item.creator.includes(search));
-  }, [search]);
+    return items.filter((item) => item.name.includes(search) || item.creator.includes(search));
+  }, [search, items]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
-  const pagedData = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, page]);
+  const paginatedItems = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const openPerm = (name: string) => {
     setPermTarget(name);
@@ -60,6 +65,39 @@ export default function DashboardPage() {
     setDelTarget(null);
   };
 
+  const toggleStatus = (item: DashboardItem) => {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === item.id
+          ? { ...i, status: i.status === 'online' ? 'offline' : 'online' }
+          : i
+      )
+    );
+  };
+
+  const openCopy = (item: DashboardItem) => {
+    setCopyTarget(item);
+    setCopyName(item.name + '_副本');
+    setCopyViewPerm([]);
+    setCopyManagePerm([]);
+    setCopyOpen(true);
+  };
+
+  const confirmCopy = () => {
+    if (!copyTarget) return;
+    const newItem: DashboardItem = {
+      ...copyTarget,
+      id: 'DB' + String(Date.now()).slice(-3),
+      name: copyName,
+      status: 'pending',
+      createdAt: new Date().toISOString().slice(0, 10),
+      updatedAt: new Date().toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/\//g, '-'),
+    };
+    setItems((prev) => [newItem, ...prev]);
+    setCopyOpen(false);
+    setCopyTarget(null);
+  };
+
   return (
     <div>
       <PageHeader
@@ -72,40 +110,47 @@ export default function DashboardPage() {
           </button>
         }
       />
-      <SearchFilter placeholder="搜索仪表盘名称、创建人..." value={search} onChange={setSearch} />
-      <div style={{ background: '#fff', borderRadius: 'var(--dae-radius-lg)', border: '1px solid var(--dae-border)', overflow: 'hidden' }}>
-        <table className="dae-table">
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minHeight:0}}>
+      <div style={{marginBottom:16}}><SearchFilter placeholder="搜索仪表盘名称、创建人..." value={search} onChange={setSearch} /></div>
+      <div style={{flex:1,overflow:'auto',border:'1px solid var(--dae-border)',borderRadius:'var(--dae-radius-lg)',background:'#fff'}}>
+        <div style={{overflowX:'auto'}}>
+        <table className="dae-table" style={{margin:0}}>
           <thead>
             <tr>
-              <th>仪表盘名称</th>
-              <th>图表数量</th>
-              <th>创建人</th>
-              <th>更新时间</th>
-              <th>状态</th>
-              <th style={{ width: 180 }}>操作</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>仪表盘名称</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>图表数量</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>创建人</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>更新时间</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>状态</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>创建时间</th>
+              <th style={{width:220,padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>操作</th>
             </tr>
           </thead>
           <tbody>
-            {pagedData.map((item) => (
+            {paginatedItems.map((item) => (
               <tr key={item.id}>
-                <td>
+                <td title={item.name} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Gauge size={16} style={{ color: 'var(--dae-primary)' }} />
                     <span style={{ fontWeight: 500 }}>{item.name}</span>
                   </div>
                 </td>
-                <td>{item.chartCount} 个</td>
-                <td>{item.creator}</td>
-                <td>{item.updatedAt}</td>
-                <td>
-                  <span className={`dae-tag ${item.status === 'published' ? 'dae-tag-green' : 'dae-tag-gray'}`}>
-                    {item.status === 'published' ? '已发布' : '草稿'}
-                  </span>
+                <td title={`${item.chartCount} 个`} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.chartCount} 个</td>
+                <td title={item.creator} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.creator}</td>
+                <td title={item.updatedAt} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.updatedAt}</td>
+                <td style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                  {item.status === 'pending' && <span className="dae-tag dae-tag-gray" style={{ whiteSpace: 'nowrap' }}>待上线</span>}
+                  {item.status === 'online' && <span className="dae-tag dae-tag-green" style={{ whiteSpace: 'nowrap' }}>已上线</span>}
+                  {item.status === 'offline' && <span style={{ background:'#fff7ed', color:'#c2410c', border:'1px solid #fed7aa', padding:'2px 10px', borderRadius:999, fontSize:12, whiteSpace:'nowrap' }}>已下线</span>}
                 </td>
-                <td>
-                  <div className="dae-table-actions">
-                    <IconAction icon={<Eye size={16} />} label="查看" onClick={() => openView(item)} />
+                <td title={item.createdAt} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.createdAt}</td>
+                <td style={{padding:'9px 14px'}}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <StatusSwitch status={item.status} onToggle={() => toggleStatus(item)} />
+                    <IconAction icon={<Eye size={16} />} label="查看" onClick={() => { window.location.hash = `page=dashboard-preview&dashboardId=${item.id}`; }} />
+                    <IconAction icon={<Settings size={16} />} label="配置" onClick={() => { window.location.hash = `page=dashboard-config&dashboardId=${item.id}`; }} />
                     <IconAction icon={<Pencil size={16} />} label="编辑" onClick={() => openModal(item)} />
+                    <IconAction icon={<Copy size={16} />} label="复制" onClick={() => openCopy(item)} />
                     <IconAction icon={<Trash2 size={16} />} label="删除" onClick={() => openDelete(item)} />
                   </div>
                 </td>
@@ -113,6 +158,7 @@ export default function DashboardPage() {
             ))}
           </tbody>
         </table>
+        </div>
         {filtered.length === 0 && (
           <div className="dae-empty">
             <Gauge size={40} />
@@ -120,15 +166,45 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
-      {pagedData.length > 0 && (
-        <div className="dae-pagination">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)}>&lt;</button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <button key={p} className={p === page ? 'active' : ''} onClick={() => setPage(p)}>{p}</button>
-          ))}
-          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)}>&gt;</button>
+      {paginatedItems.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 0',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', color: 'var(--dae-ink-secondary)' }}>
+            <span>每页</span>
+            <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+              style={{ width:60, padding:'4px 6px', border:'1px solid var(--dae-border)', borderRadius:'var(--dae-radius-sm)', fontSize:'13px', background:'#fff', cursor:'pointer' }}>
+              {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <span>条 / 共 {filtered.length} 条</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+              style={{ minWidth:28, height:28, padding:'0 6px', borderRadius:'var(--dae-radius-sm)', border:'1px solid var(--dae-border)', background:'#fff',
+                color: page===1 ? 'var(--dae-ink-subtle)' : 'var(--dae-ink-secondary)', fontSize:'12px', cursor: page===1?'not-allowed':'pointer' }}
+            >&lt;</button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+              <button key={pageNum} onClick={() => setPage(pageNum)} style={{
+                minWidth:28, height:28, padding:'0 6px', borderRadius:'var(--dae-radius-sm)',
+                border: page===pageNum ? '1px solid var(--dae-primary)' : '1px solid var(--dae-border)',
+                background: page===pageNum ? 'var(--dae-primary)' : '#fff',
+                color: page===pageNum ? '#fff' : 'var(--dae-ink-secondary)', fontSize:'12px', cursor:'pointer',
+              }}>{pageNum}</button>
+            ))}
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+              style={{ minWidth:28, height:28, padding:'0 6px', borderRadius:'var(--dae-radius-sm)', border:'1px solid var(--dae-border)', background:'#fff',
+                color: page===totalPages ? 'var(--dae-ink-subtle)' : 'var(--dae-ink-secondary)', fontSize:'12px', cursor: page===totalPages?'not-allowed':'pointer' }}
+            ></button>
+            <span style={{fontSize:'13px',color:'var(--dae-ink-secondary)',marginLeft:8}}>跳至</span>
+            <input type="text" value={jumpPage} onChange={(e)=>setJumpPage(e.target.value.replace(/\D/g,''))}
+              onKeyDown={(e)=>{ if(e.key==='Enter'){ const p=parseInt(jumpPage); if(p>=1&&p<=totalPages)setPage(p); } }}
+              style={{ width:44, height:28, padding:'0 6px', textAlign:'center', border:'1px solid var(--dae-border)', borderRadius:'var(--dae-radius-sm)', fontSize:'13px' }} />
+            <span style={{ fontSize:'13px', color:'var(--dae-ink-secondary)' }}>页</span>
+          </div>
         </div>
       )}
+      </div>
       <Drawer
         open={modalOpen}
         title="新建仪表盘"
@@ -140,6 +216,11 @@ export default function DashboardPage() {
           </>
         }
       >
+        {form.id && form.status === 'online' && (
+          <div style={{background:'#fef3c7',color:'#92400e',padding:'8px 12px',borderRadius:6,fontSize:13,marginBottom:12}}>
+            当前为已上线状态，编辑保存后将自动变为待上线
+          </div>
+        )}
         <div className="dae-form-group">
           <label>仪表盘名称</label>
           <input className="dae-input" placeholder="请输入仪表盘名称" value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -183,7 +264,11 @@ export default function DashboardPage() {
             </div>
             <div className="dae-form-group">
               <label>状态</label>
-              <div className="dae-input" style={{ background: 'var(--dae-surface)', cursor: 'default' }}>{viewItem.status === 'published' ? '已发布' : '草稿'}</div>
+              <div className="dae-input" style={{ background: 'var(--dae-surface)', cursor: 'default' }}>
+                {viewItem.status === 'pending' && <span className="dae-tag dae-tag-gray" style={{ whiteSpace: 'nowrap' }}>待上线</span>}
+                {viewItem.status === 'online' && <span className="dae-tag dae-tag-green" style={{ whiteSpace: 'nowrap' }}>已上线</span>}
+                {viewItem.status === 'offline' && <span style={{ background:'#fff7ed', color:'#c2410c', border:'1px solid #fed7aa', padding:'2px 10px', borderRadius:999, fontSize:12, whiteSpace:'nowrap' }}>已下线</span>}
+              </div>
             </div>
           </div>
         )}
@@ -197,10 +282,35 @@ export default function DashboardPage() {
 
       <DeleteConfirm
         open={delOpen}
-        content={delTarget ? `确定要删除「${delTarget.name}」吗？删除后不可恢复。` : ''}
+        content={delTarget
+          ? (items.find((i) => i.id === delTarget.id)?.status === 'online'
+            ? `「${delTarget.name}」当前为已上线状态，请先下线后再删除。`
+            : `确定要删除「${delTarget.name}」吗？删除后不可恢复。`)
+          : ''
+        }
         onClose={() => { setDelOpen(false); setDelTarget(null); }}
         onConfirm={confirmDelete}
       />
+
+      {/* 复制弹窗 */}
+      <Drawer
+        open={copyOpen}
+        title="复制仪表盘"
+        onClose={() => setCopyOpen(false)}
+        footer={
+          <>
+            <button className="dae-btn dae-btn-secondary" onClick={() => setCopyOpen(false)}>取消</button>
+            <button className="dae-btn dae-btn-primary" onClick={confirmCopy}>确认</button>
+          </>
+        }
+      >
+        <div className="dae-form-group">
+          <label>仪表盘名称</label>
+          <input className="dae-input" value={copyName} onChange={(e) => setCopyName(e.target.value)} />
+        </div>
+        <UserPermSelect label="查看权限" selected={copyViewPerm} onChange={setCopyViewPerm} />
+        <UserPermSelect label="管理权限" selected={copyManagePerm} onChange={setCopyManagePerm} />
+      </Drawer>
     </div>
   );
 }

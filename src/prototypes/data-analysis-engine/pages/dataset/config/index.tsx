@@ -440,7 +440,6 @@ export default function DatasetConfigPage() {
                         }}>
                           <span style={{
                             width: 14, textAlign: 'center', fontSize: 10, fontWeight: 700,
-                            color: '#fff',
                             background: field.dataType === 'number' ? '#dcfce7' :
                                       field.dataType === 'date' ? '#fef3c7' :
                                       field.dataType === 'boolean' ? '#e0e7ff' : '#e6f4ff',

@@ -23,6 +23,8 @@ export type PageId =
   | 'portal'
   | 'datasource'
   | 'dataset'
+  | 'dataset-config'
+  | 'dataset-detail'
   | 'self-service'
   | 'data-explore'
   | 'chart-manage'

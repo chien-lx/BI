@@ -15,10 +15,12 @@ import {
   AreaChart,
   PieChart,
   Table,
+  ShieldCheck,
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import ChartRenderer from '../components/ChartRenderer';
 import Drawer from '../components/Drawer';
+import UserPermSelect from '../components/UserPermSelect';
 import {
   datasetFields,
   datasets,
@@ -34,6 +36,34 @@ export interface SelectedField {
   name: string;
   dataType: string;
   aggregation?: string;
+  alias?: string;
+  sort?: 'asc' | 'desc' | 'none';
+  visible?: boolean;
+  rank?: number | null;
+}
+
+export interface DataLimitCondition {
+  field: string;
+  fieldType: 'dimension' | 'metric';
+  operator: string;
+  value: string;
+  logic: 'and' | 'or';
+}
+
+export interface DynamicDimension {
+  id: string;
+  alias: string;
+  fields: string[];
+  displayMode: 'dropdown' | 'flat';
+  activeField?: string;
+}
+
+export interface DynamicMetric {
+  id: string;
+  alias: string;
+  fields: string[];
+  displayMode: 'dropdown' | 'flat';
+  activeField?: string;
 }
 
 const chartTypeOptions: { key: ChartType; label: string; icon: React.ElementType }[] = [
@@ -74,8 +104,18 @@ export default function DataExplorePage() {
   const [chartName, setChartName] = useState('');
   const [activeTab, setActiveTab] = useState<'style' | 'advanced'>('style');
   const [searchField, setSearchField] = useState('');
-  const [dataLimit, setDataLimit] = useState<string>('');
+  const [dataLimitConditions, setDataLimitConditions] = useState<DataLimitCondition[]>([]);
+  const [limitDrawerOpen, setLimitDrawerOpen] = useState(false);
+  const [openConfig, setOpenConfig] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // 动态维度/指标
+  const [dynamicDimensions, setDynamicDimensions] = useState<DynamicDimension[]>([]);
+  const [dynamicMetrics, setDynamicMetrics] = useState<DynamicMetric[]>([]);
+  const [dynDimDrawerOpen, setDynDimDrawerOpen] = useState(false);
+  const [dynMetDrawerOpen, setDynMetDrawerOpen] = useState(false);
+  const [dynDimForm, setDynDimForm] = useState<Partial<DynamicDimension>>({ alias: '', fields: [], displayMode: 'dropdown' });
+  const [dynMetForm, setDynMetForm] = useState<Partial<DynamicMetric>>({ alias: '', fields: [], displayMode: 'dropdown' });
 
   // 当有 chartId 时，回显图表数据
   useEffect(() => {
@@ -89,16 +129,20 @@ export default function DataExplorePage() {
       const dims = fields.filter(f => f.type === 'dimension');
       const mets = fields.filter(f => f.type === 'metric');
       if (dims.length > 0) {
-        setDimensions([{ name: dims[0].name, dataType: dims[0].dataType }]);
+        setDimensions([{ name: dims[0].name, dataType: dims[0].dataType, sort: 'none', visible: true }]);
       }
       if (mets.length > 0) {
-        setMetrics([{ name: mets[0].name, dataType: mets[0].dataType, aggregation: 'SUM' }]);
+        setMetrics([{ name: mets[0].name, dataType: mets[0].dataType, aggregation: 'SUM', visible: true, rank: null }]);
       }
       setShowChart(true);
     } else {
       setIsEditMode(false);
     }
   }, [editingChart?.id]);
+
+  // 样式配置开关状态
+  const [viewPerm, setViewPerm] = useState<string[]>([]);
+  const [managePerm, setManagePerm] = useState<string[]>([]);
 
   // 样式配置开关状态
   const [styleConfig, setStyleConfig] = useState({
@@ -174,14 +218,14 @@ export default function DataExplorePage() {
 
   const addDimension = (f: { name: string; dataType: string }) => {
     if (dimensions.find((d) => d.name === f.name)) return;
-    setDimensions((prev) => [...prev, { name: f.name, dataType: f.dataType }]);
+    setDimensions((prev) => [...prev, { name: f.name, dataType: f.dataType, sort: 'none', visible: true }]);
   };
 
   const addMetric = (f: { name: string; dataType: string }) => {
     if (metrics.find((m) => m.name === f.name)) return;
     setMetrics((prev) => [
       ...prev,
-      { name: f.name, dataType: f.dataType, aggregation: 'SUM' },
+      { name: f.name, dataType: f.dataType, aggregation: 'SUM', visible: true, rank: null },
     ]);
   };
 
@@ -193,17 +237,69 @@ export default function DataExplorePage() {
     setMetrics((prev) => prev.filter((m) => m.name !== name));
   };
 
-  const updateMetricAgg = (name: string, agg: string) => {
-    setMetrics((prev) =>
-      prev.map((m) => (m.name === name ? { ...m, aggregation: agg } : m))
-    );
+  const updateDimension = (name: string, updates: Partial<SelectedField>) => {
+    setDimensions((prev) => prev.map((d) => (d.name === name ? { ...d, ...updates } : d)));
+  };
+
+  const updateMetric = (name: string, updates: Partial<SelectedField>) => {
+    setMetrics((prev) => prev.map((m) => (m.name === name ? { ...m, ...updates } : m)));
+  };
+
+  const removeDynamicDimension = (id: string) => {
+    setDynamicDimensions((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  const removeDynamicMetric = (id: string) => {
+    setDynamicMetrics((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const updateDynamicDimension = (id: string, updates: Partial<DynamicDimension>) => {
+    setDynamicDimensions((prev) => prev.map((d) => (d.id === id ? { ...d, ...updates } : d)));
+  };
+
+  const updateDynamicMetric = (id: string, updates: Partial<DynamicMetric>) => {
+    setDynamicMetrics((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
   };
 
   const clearAll = () => {
     setDimensions([]);
     setMetrics([]);
     setShowChart(false);
-    setDataLimit('');
+    setDataLimitConditions([]);
+    setLimitDrawerOpen(false);
+    setDynamicDimensions([]);
+    setDynamicMetrics([]);
+    setDynDimDrawerOpen(false);
+    setDynMetDrawerOpen(false);
+    setDynDimForm({ alias: '', fields: [], displayMode: 'dropdown' });
+    setDynMetForm({ alias: '', fields: [], displayMode: 'dropdown' });
+    setOpenConfig(null);
+  };
+
+  const addLimitCondition = () => {
+    const firstDim = dimensions[0];
+    const firstMet = metrics[0];
+    const defaultField = firstDim || firstMet;
+    setDataLimitConditions((prev) => [
+      ...prev,
+      {
+        field: defaultField ? (defaultField.alias || defaultField.name) : '',
+        fieldType: firstDim ? 'dimension' : 'metric',
+        operator: '等于',
+        value: '',
+        logic: 'and',
+      },
+    ]);
+  };
+
+  const updateLimitCondition = (index: number, key: keyof DataLimitCondition, value: string) => {
+    setDataLimitConditions((prev) =>
+      prev.map((c, i) => (i === index ? { ...c, [key]: value } : c))
+    );
+  };
+
+  const removeLimitCondition = (index: number) => {
+    setDataLimitConditions((prev) => prev.filter((_, i) => i !== index));
   };
 
   const previewTitle = useMemo(() => {
@@ -211,6 +307,13 @@ export default function DataExplorePage() {
     const metStr = metrics.map((m) => m.name).join('、') || '无指标';
     return `${selectedDataset} · ${dimStr} · ${metStr}`;
   }, [selectedDataset, dimensions, metrics]);
+
+  // 点击文档其他区域关闭配置面板
+  useEffect(() => {
+    const handleDocClick = () => setOpenConfig(null);
+    document.addEventListener('click', handleDocClick);
+    return () => document.removeEventListener('click', handleDocClick);
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -275,7 +378,7 @@ export default function DataExplorePage() {
               }}
             >
               {datasets
-                .filter((d) => d.status === 'active')
+                .filter((d) => d.status === 'online')
                 .map((d) => (
                   <option key={d.id} value={d.name}>
                     {d.name}
@@ -323,9 +426,10 @@ export default function DataExplorePage() {
                 <button
                   className="dae-btn dae-btn-ghost dae-btn-sm"
                   style={{ padding: '2px 6px', fontSize: 12 }}
-                  onClick={() =>
-                    filteredDimensions.forEach((f) => addDimension(f))
-                  }
+                  onClick={() => {
+                    setDynDimForm({ alias: '', fields: [], displayMode: 'dropdown' });
+                    setDynDimDrawerOpen(true);
+                  }}
                 >
                   <Plus size={12} />
                 </button>
@@ -363,9 +467,10 @@ export default function DataExplorePage() {
                 <button
                   className="dae-btn dae-btn-ghost dae-btn-sm"
                   style={{ padding: '2px 6px', fontSize: 12 }}
-                  onClick={() =>
-                    filteredMetrics.forEach((f) => addMetric(f))
-                  }
+                  onClick={() => {
+                    setDynMetForm({ alias: '', fields: [], displayMode: 'dropdown' });
+                    setDynMetDrawerOpen(true);
+                  }}
                 >
                   <Plus size={12} />
                 </button>
@@ -916,20 +1021,106 @@ export default function DataExplorePage() {
                 }}
               >
                 {dimensions.map((d) => (
-                  <div key={d.name} className="de-pill de-pill-dim">
-                    <GripVertical size={10} className="de-pill-drag" />
-                    <span>{d.name}</span>
-                    <X
-                      size={10}
-                      className="de-pill-close"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeDimension(d.name);
-                      }}
-                    />
+                  <div key={d.name} style={{ position: 'relative' }}>
+                    <div className="de-pill de-pill-dim" style={{ opacity: d.visible === false ? 0.5 : 1 }}>
+                      <GripVertical size={10} className="de-pill-drag" />
+                      <span>{d.alias || d.name}</span>
+                      {d.sort !== 'none' && (
+                        <span style={{ fontSize: 10, opacity: 0.8 }}>
+                          {d.sort === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
+                      <Settings2
+                        size={10}
+                        style={{ cursor: 'pointer', opacity: 0.6, marginLeft: 2 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenConfig((prev) => (prev === `dim:${d.name}` ? null : `dim:${d.name}`));
+                        }}
+                      />
+                      <X
+                        size={10}
+                        className="de-pill-close"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeDimension(d.name);
+                        }}
+                      />
+                    </div>
+                    {openConfig === `dim:${d.name}` && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 4px)',
+                          left: 0,
+                          zIndex: 50,
+                          background: '#fff',
+                          border: '1px solid var(--dae-border)',
+                          borderRadius: 'var(--dae-radius-md)',
+                          padding: 12,
+                          width: 220,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 2 }}>
+                          {d.name}
+                        </div>
+                        <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 12 }}>别名</label>
+                          <input
+                            className="dae-input"
+                            style={{ fontSize: 12, padding: '4px 8px' }}
+                            placeholder="显示别名"
+                            value={d.alias || ''}
+                            onChange={(e) => updateDimension(d.name, { alias: e.target.value })}
+                          />
+                        </div>
+                        <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 12 }}>排序</label>
+                          <select
+                            className="dae-input"
+                            style={{ fontSize: 12, padding: '4px 8px' }}
+                            value={d.sort || 'none'}
+                            onChange={(e) => updateDimension(d.name, { sort: e.target.value as 'asc' | 'desc' | 'none' })}
+                          >
+                            <option value="none">默认</option>
+                            <option value="asc">升序</option>
+                            <option value="desc">降序</option>
+                          </select>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: 'var(--dae-ink-secondary)', cursor: 'pointer' }}>
+                          <span>显示</span>
+                          <span
+                            className={`de-toggle ${d.visible !== false ? 'on' : ''}`}
+                            onClick={() => updateDimension(d.name, { visible: d.visible === false ? true : false })}
+                          />
+                        </label>
+                      </div>
+                    )}
                   </div>
                 ))}
-                {dimensions.length === 0 && (
+                {dynamicDimensions.map((dd) => (
+                  <div key={dd.id} style={{ position: 'relative' }}>
+                    <div className="de-pill" style={{ background: '#fef3c7', color: '#b45309', borderColor: '#fde68a' }}>
+                      <GripVertical size={10} className="de-pill-drag" />
+                      <span style={{ fontWeight: 600 }}>{dd.alias}</span>
+                      <span style={{ fontSize: 10, opacity: 0.7 }}>(动态)</span>
+                      <X
+                        size={10}
+                        className="de-pill-close"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeDynamicDimension(dd.id);
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                {dimensions.length === 0 && dynamicDimensions.length === 0 && (
                   <span
                     style={{
                       fontSize: 13,
@@ -966,32 +1157,121 @@ export default function DataExplorePage() {
                 }}
               >
                 {metrics.map((m) => (
-                  <div key={m.name} className="de-pill de-pill-metric">
-                    <GripVertical size={10} className="de-pill-drag" />
-                    <span>{m.name}</span>
-                    <select
-                      className="de-pill-select"
-                      value={m.aggregation || 'SUM'}
-                      onChange={(e) => updateMetricAgg(m.name, e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {aggOptions.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                    <X
-                      size={10}
-                      className="de-pill-close"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeMetric(m.name);
-                      }}
-                    />
+                  <div key={m.name} style={{ position: 'relative' }}>
+                    <div className="de-pill de-pill-metric" style={{ opacity: m.visible === false ? 0.5 : 1 }}>
+                      <GripVertical size={10} className="de-pill-drag" />
+                      <span>{m.alias || m.name}</span>
+                      <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.85, marginLeft: 2 }}>
+                        {m.aggregation || 'SUM'}
+                      </span>
+                      {m.rank != null && m.rank > 0 && (
+                        <span style={{ fontSize: 10, opacity: 0.8 }}>TOP{m.rank}</span>
+                      )}
+                      <Settings2
+                        size={10}
+                        style={{ cursor: 'pointer', opacity: 0.6, marginLeft: 2 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenConfig((prev) => (prev === `metric:${m.name}` ? null : `metric:${m.name}`));
+                        }}
+                      />
+                      <X
+                        size={10}
+                        className="de-pill-close"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeMetric(m.name);
+                        }}
+                      />
+                    </div>
+                    {openConfig === `metric:${m.name}` && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: 'absolute',
+                          top: 'calc(100% + 4px)',
+                          left: 0,
+                          zIndex: 50,
+                          background: '#fff',
+                          border: '1px solid var(--dae-border)',
+                          borderRadius: 'var(--dae-radius-md)',
+                          padding: 12,
+                          width: 220,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 2 }}>
+                          {m.name}
+                        </div>
+                        <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 12 }}>别名</label>
+                          <input
+                            className="dae-input"
+                            style={{ fontSize: 12, padding: '4px 8px' }}
+                            placeholder="显示别名"
+                            value={m.alias || ''}
+                            onChange={(e) => updateMetric(m.name, { alias: e.target.value })}
+                          />
+                        </div>
+                        <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 12 }}>聚合计算</label>
+                          <select
+                            className="dae-input"
+                            style={{ fontSize: 12, padding: '4px 8px' }}
+                            value={m.aggregation || 'SUM'}
+                            onChange={(e) => updateMetric(m.name, { aggregation: e.target.value })}
+                          >
+                            {aggOptions.map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 12 }}>排名</label>
+                          <select
+                            className="dae-input"
+                            style={{ fontSize: 12, padding: '4px 8px' }}
+                            value={m.rank ?? 0}
+                            onChange={(e) => updateMetric(m.name, { rank: Number(e.target.value) || null })}
+                          >
+                            <option value={0}>不排名</option>
+                            <option value={3}>TOP 3</option>
+                            <option value={5}>TOP 5</option>
+                            <option value={10}>TOP 10</option>
+                          </select>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: 'var(--dae-ink-secondary)', cursor: 'pointer' }}>
+                          <span>显示</span>
+                          <span
+                            className={`de-toggle ${m.visible !== false ? 'on' : ''}`}
+                            onClick={() => updateMetric(m.name, { visible: m.visible === false ? true : false })}
+                          />
+                        </label>
+                      </div>
+                    )}
                   </div>
                 ))}
-                {metrics.length === 0 && (
+                {dynamicMetrics.map((dm) => (
+                  <div key={dm.id} style={{ position: 'relative' }}>
+                    <div className="de-pill" style={{ background: '#dbeafe', color: '#1e40af', borderColor: '#bfdbfe' }}>
+                      <GripVertical size={10} className="de-pill-drag" />
+                      <span style={{ fontWeight: 600 }}>{dm.alias}</span>
+                      <span style={{ fontSize: 10, opacity: 0.7 }}>(动态)</span>
+                      <X
+                        size={10}
+                        className="de-pill-close"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeDynamicMetric(dm.id);
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                {metrics.length === 0 && dynamicMetrics.length === 0 && (
                   <span
                     style={{
                       fontSize: 13,
@@ -1006,7 +1286,7 @@ export default function DataExplorePage() {
             </div>
 
             {/* Data limit row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <div
                 style={{
                   fontSize: 13,
@@ -1018,18 +1298,27 @@ export default function DataExplorePage() {
               >
                 数据限制
               </div>
-              <div className="de-pill de-pill-limit">
+              <button
+                className="de-pill de-pill-limit"
+                onClick={() => setLimitDrawerOpen(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
                 <Filter size={10} />
                 <span>数据限制</span>
-                <ChevronDown size={10} />
-              </div>
-              <input
-                className="dae-input"
-                style={{ width: 100, fontSize: 12, padding: '5px 8px' }}
-                placeholder="如 1000"
-                value={dataLimit}
-                onChange={(e) => setDataLimit(e.target.value)}
-              />
+                {dataLimitConditions.length > 0 && (
+                  <span style={{
+                    background: 'var(--dae-primary)',
+                    color: '#fff',
+                    fontSize: 10,
+                    fontWeight: 600,
+                    padding: '0 5px',
+                    borderRadius: 8,
+                    lineHeight: '14px',
+                  }}>
+                    {dataLimitConditions.length}
+                  </span>
+                )}
+              </button>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                 <button
                   className="dae-btn dae-btn-secondary dae-btn-sm"
@@ -1077,24 +1366,80 @@ export default function DataExplorePage() {
                     justifyContent: 'flex-end',
                     gap: 12,
                     marginBottom: 12,
+                    flexWrap: 'wrap',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 12, color: 'var(--dae-ink-muted)' }}>
-                      动态指标
-                    </span>
-                    <span className="de-pill de-pill-metric">
-                      {metrics[0]?.name || '销售额'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 12, color: 'var(--dae-ink-muted)' }}>
-                      动态维度
-                    </span>
-                    <span className="de-pill de-pill-dim">
-                      {dimensions[0]?.name || '日期'}
-                    </span>
-                  </div>
+                  {dynamicMetrics.map((dm) => (
+                    <div key={dm.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: 'var(--dae-ink-muted)' }}>{dm.alias}</span>
+                      {dm.displayMode === 'dropdown' ? (
+                        <select
+                          className="dae-input"
+                          style={{ width: 120, fontSize: 12, padding: '4px 8px' }}
+                          value={dm.activeField || dm.fields[0] || ''}
+                          onChange={(e) => updateDynamicMetric(dm.id, { activeField: e.target.value })}
+                        >
+                          {dm.fields.map((f) => {
+                            const field = metrics.find((m) => m.name === f || m.alias === f);
+                            return <option key={f} value={f}>{field?.alias || f}</option>;
+                          })}
+                        </select>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {dm.fields.map((f) => {
+                            const field = metrics.find((m) => m.name === f || m.alias === f);
+                            const isActive = dm.activeField === f || (dm.activeField == null && dm.fields[0] === f);
+                            return (
+                              <button
+                                key={f}
+                                className={`de-pill ${isActive ? 'de-pill-metric' : ''}`}
+                                style={{ fontSize: 11, padding: '2px 8px', cursor: 'pointer', opacity: isActive ? 1 : 0.6, background: isActive ? undefined : '#f1f5f9', color: isActive ? undefined : '#64748b', borderColor: isActive ? undefined : '#e2e8f0' }}
+                                onClick={() => updateDynamicMetric(dm.id, { activeField: f })}
+                              >
+                                {field?.alias || f}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {dynamicDimensions.map((dd) => (
+                    <div key={dd.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: 'var(--dae-ink-muted)' }}>{dd.alias}</span>
+                      {dd.displayMode === 'dropdown' ? (
+                        <select
+                          className="dae-input"
+                          style={{ width: 120, fontSize: 12, padding: '4px 8px' }}
+                          value={dd.activeField || dd.fields[0] || ''}
+                          onChange={(e) => updateDynamicDimension(dd.id, { activeField: e.target.value })}
+                        >
+                          {dd.fields.map((f) => {
+                            const field = dimensions.find((d) => d.name === f || d.alias === f);
+                            return <option key={f} value={f}>{field?.alias || f}</option>;
+                          })}
+                        </select>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {dd.fields.map((f) => {
+                            const field = dimensions.find((d) => d.name === f || d.alias === f);
+                            const isActive = dd.activeField === f || (dd.activeField == null && dd.fields[0] === f);
+                            return (
+                              <button
+                                key={f}
+                                className={`de-pill ${isActive ? 'de-pill-dim' : ''}`}
+                                style={{ fontSize: 11, padding: '2px 8px', cursor: 'pointer', opacity: isActive ? 1 : 0.6, background: isActive ? undefined : '#f1f5f9', color: isActive ? undefined : '#64748b', borderColor: isActive ? undefined : '#e2e8f0' }}
+                                onClick={() => updateDynamicDimension(dd.id, { activeField: f })}
+                              >
+                                {field?.alias || f}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
                 </div>
                 {chartType === 'table' ? (
                   <div className="dae-scroll" style={{ overflow: 'auto' }}>
@@ -1103,11 +1448,11 @@ export default function DataExplorePage() {
                         <tr>
                           <th>序号</th>
                           {dimensions.map((d) => (
-                            <th key={d.name}>{d.name}</th>
+                            <th key={d.name}>{d.alias || d.name}</th>
                           ))}
                           {metrics.map((m) => (
                             <th key={m.name}>
-                              {m.name} ({m.aggregation})
+                              {m.alias || m.name} ({m.aggregation})
                             </th>
                           ))}
                         </tr>
@@ -1179,6 +1524,295 @@ export default function DataExplorePage() {
         <div className="dae-form-group">
           <label>所属数据集</label>
           <input className="dae-input" disabled value={selectedDataset} />
+        </div>
+        <div style={{ paddingTop: 16, borderTop: '1px solid var(--dae-border)' }}>
+          <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <ShieldCheck size={16} style={{ color: 'var(--dae-primary)' }} />
+            权限设置
+          </h4>
+          <UserPermSelect label="查看权限" selected={viewPerm} onChange={setViewPerm} />
+          <UserPermSelect label="管理权限" selected={managePerm} onChange={setManagePerm} />
+        </div>
+      </Drawer>
+
+      {/* 数据限制配置 Drawer */}
+      <Drawer
+        open={limitDrawerOpen}
+        title="数据限制配置"
+        onClose={() => setLimitDrawerOpen(false)}
+        footer={
+          <>
+            <button className="dae-btn dae-btn-secondary" onClick={() => setLimitDrawerOpen(false)}>
+              取消
+            </button>
+            <button className="dae-btn dae-btn-primary" onClick={() => setLimitDrawerOpen(false)}>
+              确定
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {dataLimitConditions.length === 0 && (
+            <div style={{ fontSize: 13, color: 'var(--dae-ink-muted)', padding: '12px 0' }}>
+              暂无限制条件，点击「添加条件」配置
+            </div>
+          )}
+          {dataLimitConditions.map((condition, index) => (
+            <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {index > 0 && (
+                <select
+                  className="dae-input"
+                  style={{ width: 70, fontWeight: 600, color: 'var(--dae-primary)', fontSize: 12, padding: '4px 6px' }}
+                  value={condition.logic}
+                  onChange={(e) => updateLimitCondition(index, 'logic', e.target.value)}
+                >
+                  <option value="and">且</option>
+                  <option value="or">或</option>
+                </select>
+              )}
+              <select
+                className="dae-input"
+                style={{ width: 160, fontSize: 12, padding: '4px 6px' }}
+                value={`${condition.fieldType}:${condition.field}`}
+                onChange={(e) => {
+                  const [type, ...nameParts] = e.target.value.split(':');
+                  const name = nameParts.join(':');
+                  updateLimitCondition(index, 'fieldType', type);
+                  updateLimitCondition(index, 'field', name);
+                }}
+              >
+                <option value="">选择字段...</option>
+                <optgroup label="维度">
+                  {dimensions.map((d) => (
+                    <option key={d.name} value={`dimension:${d.alias || d.name}`}>{d.alias || d.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="指标">
+                  {metrics.map((m) => (
+                    <option key={m.name} value={`metric:${m.alias || m.name}`}>{m.alias || m.name}</option>
+                  ))}
+                </optgroup>
+              </select>
+              <select
+                className="dae-input"
+                style={{ width: 100, fontSize: 12, padding: '4px 6px' }}
+                value={condition.operator}
+                onChange={(e) => updateLimitCondition(index, 'operator', e.target.value)}
+              >
+                <option>等于</option>
+                <option>不等于</option>
+                <option>大于</option>
+                <option>小于</option>
+                <option>大于等于</option>
+                <option>小于等于</option>
+                <option>包含</option>
+                <option>不包含</option>
+              </select>
+              <input
+                className="dae-input"
+                style={{ flex: 1, minWidth: 80, fontSize: 12, padding: '4px 8px' }}
+                placeholder="输入值"
+                value={condition.value}
+                onChange={(e) => updateLimitCondition(index, 'value', e.target.value)}
+              />
+              <button
+                className="dae-btn dae-btn-danger dae-btn-sm"
+                onClick={() => removeLimitCondition(index)}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          <button
+            className="dae-btn dae-btn-secondary dae-btn-sm"
+            onClick={addLimitCondition}
+            style={{ alignSelf: 'flex-start', marginTop: 4 }}
+          >
+            <Plus size={14} />
+            添加条件
+          </button>
+        </div>
+      </Drawer>
+
+      {/* 动态维度设置 Drawer */}
+      <Drawer
+        open={dynDimDrawerOpen}
+        title="添加动态维度"
+        onClose={() => setDynDimDrawerOpen(false)}
+        footer={
+          <>
+            <button className="dae-btn dae-btn-secondary" onClick={() => setDynDimDrawerOpen(false)}>
+              取消
+            </button>
+            <button
+              className="dae-btn dae-btn-primary"
+              onClick={() => {
+                if (dynDimForm.alias && dynDimForm.fields && dynDimForm.fields.length > 0) {
+                  setDynamicDimensions((prev) => [
+                    ...prev,
+                    {
+                      id: 'dyn-dim-' + Date.now(),
+                      alias: dynDimForm.alias,
+                      fields: dynDimForm.fields,
+                      displayMode: dynDimForm.displayMode || 'dropdown',
+                      activeField: dynDimForm.fields[0],
+                    },
+                  ]);
+                  setDynDimDrawerOpen(false);
+                  setDynDimForm({ alias: '', fields: [], displayMode: 'dropdown' });
+                }
+              }}
+            >
+              确定
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="dae-form-group" style={{ marginBottom: 0 }}>
+            <label>动态维度别名</label>
+            <input
+              className="dae-input"
+              placeholder="如：地理维度"
+              value={dynDimForm.alias || ''}
+              onChange={(e) => setDynDimForm((prev) => ({ ...prev, alias: e.target.value }))}
+            />
+          </div>
+          <div className="dae-form-group" style={{ marginBottom: 0 }}>
+            <label>选择维度字段</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+              {dimensionList.map((f) => (
+                <label
+                  key={f.name}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--dae-ink-secondary)', cursor: 'pointer' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={(dynDimForm.fields || []).includes(f.name)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setDynDimForm((prev) => ({
+                        ...prev,
+                        fields: checked
+                          ? [...(prev.fields || []), f.name]
+                          : (prev.fields || []).filter((name) => name !== f.name),
+                      }));
+                    }}
+                  />
+                  {f.name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="dae-form-group" style={{ marginBottom: 0 }}>
+            <label>展示形式</label>
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              {([
+                { key: 'dropdown', label: '下拉选择' },
+                { key: 'flat', label: '平铺展示' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.key}
+                  className={`de-mid-chart-btn ${dynDimForm.displayMode === opt.key ? 'active' : ''}`}
+                  style={{ height: 32, flex: 1, fontSize: 13 }}
+                  onClick={() => setDynDimForm((prev) => ({ ...prev, displayMode: opt.key }))}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Drawer>
+
+      {/* 动态指标设置 Drawer */}
+      <Drawer
+        open={dynMetDrawerOpen}
+        title="添加动态指标"
+        onClose={() => setDynMetDrawerOpen(false)}
+        footer={
+          <>
+            <button className="dae-btn dae-btn-secondary" onClick={() => setDynMetDrawerOpen(false)}>
+              取消
+            </button>
+            <button
+              className="dae-btn dae-btn-primary"
+              onClick={() => {
+                if (dynMetForm.alias && dynMetForm.fields && dynMetForm.fields.length > 0) {
+                  setDynamicMetrics((prev) => [
+                    ...prev,
+                    {
+                      id: 'dyn-met-' + Date.now(),
+                      alias: dynMetForm.alias,
+                      fields: dynMetForm.fields,
+                      displayMode: dynMetForm.displayMode || 'dropdown',
+                      activeField: dynMetForm.fields[0],
+                    },
+                  ]);
+                  setDynMetDrawerOpen(false);
+                  setDynMetForm({ alias: '', fields: [], displayMode: 'dropdown' });
+                }
+              }}
+            >
+              确定
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="dae-form-group" style={{ marginBottom: 0 }}>
+            <label>动态指标别名</label>
+            <input
+              className="dae-input"
+              placeholder="如：核心指标"
+              value={dynMetForm.alias || ''}
+              onChange={(e) => setDynMetForm((prev) => ({ ...prev, alias: e.target.value }))}
+            />
+          </div>
+          <div className="dae-form-group" style={{ marginBottom: 0 }}>
+            <label>选择指标字段</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+              {metricList.map((f) => (
+                <label
+                  key={f.name}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--dae-ink-secondary)', cursor: 'pointer' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={(dynMetForm.fields || []).includes(f.name)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setDynMetForm((prev) => ({
+                        ...prev,
+                        fields: checked
+                          ? [...(prev.fields || []), f.name]
+                          : (prev.fields || []).filter((name) => name !== f.name),
+                      }));
+                    }}
+                  />
+                  {f.name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="dae-form-group" style={{ marginBottom: 0 }}>
+            <label>展示形式</label>
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              {([
+                { key: 'dropdown', label: '下拉选择' },
+                { key: 'flat', label: '平铺展示' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.key}
+                  className={`de-mid-chart-btn ${dynMetForm.displayMode === opt.key ? 'active' : ''}`}
+                  style={{ height: 32, flex: 1, fontSize: 13 }}
+                  onClick={() => setDynMetForm((prev) => ({ ...prev, displayMode: opt.key }))}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </Drawer>
     </div>

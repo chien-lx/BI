@@ -12,6 +12,7 @@ interface FilterCondition {
   field: string;
   operator: string;
   value: string;
+  logic: 'and' | 'or';
 }
 
 export default function SelfServicePage() {
@@ -31,7 +32,7 @@ export default function SelfServicePage() {
   };
 
   const addFilter = () => {
-    setFilters((prev) => [...prev, { field: fields[0]?.name || '', operator: '等于', value: '' }]);
+    setFilters((prev) => [...prev, { field: fields[0]?.name || '', operator: '等于', value: '', logic: 'and' }]);
   };
 
   const updateFilter = (index: number, key: keyof FilterCondition, value: string) => {
@@ -70,7 +71,7 @@ export default function SelfServicePage() {
               value={selectedDataset}
               onChange={(e) => setSelectedDataset(e.target.value)}
             >
-              {datasets.filter((d) => d.status === 'active').map((d) => (
+              {datasets.filter((d) => d.status === 'online').map((d) => (
                 <option key={d.id} value={d.name}>{d.name}</option>
               ))}
             </select>
@@ -110,6 +111,17 @@ export default function SelfServicePage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {filters.map((filter, index) => (
                 <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {index > 0 && (
+                    <select
+                      className="dae-input"
+                      style={{ width: 70, fontWeight: 600, color: 'var(--dae-primary)' }}
+                      value={filter.logic}
+                      onChange={(e) => updateFilter(index, 'logic', e.target.value as 'and' | 'or')}
+                    >
+                      <option value="and">且</option>
+                      <option value="or">或</option>
+                    </select>
+                  )}
                   <select className="dae-input" style={{ width: 140 }} value={filter.field} onChange={(e) => updateFilter(index, 'field', e.target.value)}>
                     {fields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
                   </select>

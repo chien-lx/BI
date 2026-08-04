@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Plus, Database, ShieldCheck, TestTube, CheckCircle, X, ChevronDown, Eye, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Database, ShieldCheck, TestTube, CheckCircle, X, ChevronDown, Eye, Pencil, Trash2, Copy } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import SearchFilter from '../components/SearchFilter';
 import Drawer from '../components/Drawer';
 import IconAction from '../components/IconAction';
 import DeleteConfirm from '../components/DeleteConfirm';
+import StatusSwitch from '../components/StatusSwitch';
 import { dataSources, type DataSource } from '../data/mockData';
 
 type ConnStatus = 'idle' | 'testing' | 'success' | 'error';
@@ -172,19 +173,26 @@ export default function DatasourcePage() {
   const [delOpen, setDelOpen] = useState(false);
   const [delTarget, setDelTarget] = useState<{ id: string; name: string } | null>(null);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
+  const [jumpPage, setJumpPage] = useState('');
+  const [items, setItems] = useState<DataSource[]>(dataSources);
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copyTarget, setCopyTarget] = useState<DataSource | null>(null);
+  const [copyName, setCopyName] = useState('');
+  const [copyViewPerm, setCopyViewPerm] = useState<string[]>([]);
+  const [copyManagePerm, setCopyManagePerm] = useState<string[]>([]);
 
   const filtered = useMemo(() => {
-    return dataSources.filter((item) =>
+    return items.filter((item) =>
       item.name.includes(search) || item.type.includes(search) || item.host.includes(search)
     );
-  }, [search]);
+  }, [search, items]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const pagedData = useMemo(() => {
     const start = (page - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
-  }, [filtered, page]);
+  }, [filtered, page, pageSize]);
 
   const typeCategory = useMemo(() => {
     const t = form.type || 'MySQL';
@@ -243,6 +251,39 @@ export default function DatasourcePage() {
     setDelTarget(null);
   };
 
+  const toggleStatus = (item: DataSource) => {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === item.id
+          ? { ...i, status: i.status === 'offline' ? 'online' : 'offline' }
+          : i
+      )
+    );
+  };
+
+  const openCopy = (item: DataSource) => {
+    setCopyTarget(item);
+    setCopyName(item.name + '_副本');
+    setCopyViewPerm([]);
+    setCopyManagePerm([]);
+    setCopyOpen(true);
+  };
+
+  const confirmCopy = () => {
+    if (!copyTarget) return;
+    const newItem: DataSource = {
+      ...copyTarget,
+      id: 'DS' + String(Date.now()).slice(-3),
+      name: copyName,
+      status: 'pending',
+      createdAt: new Date().toISOString().slice(0, 10),
+      updatedAt: new Date().toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/\//g, '-'),
+    };
+    setItems((prev) => [newItem, ...prev]);
+    setCopyOpen(false);
+    setCopyTarget(null);
+  };
+
   return (
     <div>
       <PageHeader
@@ -255,65 +296,118 @@ export default function DatasourcePage() {
           </button>
         }
       />
-      <SearchFilter placeholder="搜索数据源名称、类型、地址..." value={search} onChange={setSearch} />
-      <div style={{ background: '#fff', borderRadius: 'var(--dae-radius-lg)', border: '1px solid var(--dae-border)', overflow: 'hidden' }}>
-        <table className="dae-table">
-          <thead>
-            <tr>
-              <th>数据源名称</th>
-              <th>类型</th>
-              <th>连接地址</th>
-              <th>数据库</th>
-              <th>状态</th>
-              <th>创建人</th>
-              <th>修改人</th>
-              <th>修改时间</th>
-              <th style={{ width: 180 }}>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagedData.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Database size={16} style={{ color: 'var(--dae-primary)' }} />
-                    <span style={{ fontWeight: 500 }}>{item.name}</span>
-                  </div>
-                </td>
-                <td><span className="dae-tag dae-tag-blue">{item.type}</span></td>
-                <td>{item.host}</td>
-                <td>{item.database}</td>
-                <td>{item.status === 'connected' ? '已连接' : '未连接'}</td>
-                <td>{item.creator}</td>
-                <td>{item.modifier}</td>
-                <td>{item.updatedAt}</td>
-                <td>
-                  <div className="dae-table-actions">
-                    <IconAction icon={<Eye size={16} />} label="查看" onClick={() => openView(item)} />
-                    <IconAction icon={<Pencil size={16} />} label="编辑" onClick={() => openModal(item)} />
-                    <IconAction icon={<Trash2 size={16} />} label="删除" onClick={() => openDelete(item)} />
-                  </div>
-                </td>
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minHeight:0}}>
+        {/* 搜索框 - 不滚动 */}
+        <div style={{marginBottom:16}}>
+          <SearchFilter placeholder="搜索数据源名称、类型、地址..." value={search} onChange={setSearch} />
+        </div>
+
+        {/* 表格 - 可滚动 */}
+        <div style={{flex:1,overflow:'auto',border:'1px solid var(--dae-border)',borderRadius:'var(--dae-radius-lg)',background:'#fff'}}>
+          <div style={{overflowX:'auto'}}>
+          <table className="dae-table" style={{margin:0}}>
+            <thead>
+              <tr>
+                <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>数据源名称</th>
+                <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>类型</th>
+                <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>连接地址</th>
+                <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>数据库</th>
+                <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>连接状态</th>
+                <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>状态</th>
+                <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>创建人</th>
+                <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>修改人</th>
+                <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>修改时间</th>
+                <th style={{width:220,padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>操作</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
-          <div className="dae-empty">
-            <Database size={40} />
-            <p>暂无数据源，点击「新建数据源」创建</p>
+            </thead>
+            <tbody>
+              {pagedData.map((item) => (
+                <tr key={item.id}>
+                  <td title={item.name} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Database size={16} style={{ color: 'var(--dae-primary)' }} />
+                      <span style={{ fontWeight: 500 }}>{item.name}</span>
+                    </div>
+                  </td>
+                  <td title={item.type} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span className="dae-tag dae-tag-blue">{item.type}</span></td>
+                  <td title={item.host} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.host}</td>
+                  <td title={item.database || ''} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.database}</td>
+                  <td title={item.connStatus === 'connected' ? '已连接' : '未连接'} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.connStatus === 'connected' ? '已连接' : '未连接'}</td>
+                  <td style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                    {item.status === 'pending' && <span className="dae-tag dae-tag-gray" style={{ whiteSpace: 'nowrap' }}>待上线</span>}
+                    {item.status === 'online' && <span className="dae-tag dae-tag-green" style={{ whiteSpace: 'nowrap' }}>已上线</span>}
+                    {item.status === 'offline' && <span style={{ background:'#fff7ed', color:'#c2410c', border:'1px solid #fed7aa', padding:'2px 10px', borderRadius:999, fontSize:12, whiteSpace:'nowrap' }}>已下线</span>}
+                  </td>
+                  <td title={item.creator} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.creator}</td>
+                  <td title={item.modifier} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.modifier}</td>
+                  <td title={item.updatedAt} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.updatedAt}</td>
+                  <td style={{padding:'9px 14px'}}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {/* Switch 开关 */}
+                      <StatusSwitch status={item.status} onToggle={() => toggleStatus(item)} />
+                      <IconAction icon={<Eye size={16} />} label="查看" onClick={() => openView(item)} />
+                      <IconAction icon={<Pencil size={16} />} label="编辑" onClick={() => openModal(item)} />
+                      <IconAction icon={<Copy size={16} />} label="复制" onClick={() => openCopy(item)} />
+                      <IconAction icon={<Trash2 size={16} />} label="删除" onClick={() => openDelete(item)} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+          {filtered.length === 0 && (
+            <div className="dae-empty">
+              <Database size={40} />
+              <p>暂无数据源，点击「新建数据源」创建</p>
+            </div>
+          )}
+        </div>
+
+        {/* 分页 - 不滚动，固定底部 */}
+        {pagedData.length > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 0', borderTop: '1px solid var(--dae-border)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', color: 'var(--dae-ink-secondary)' }}>
+              <span>每页</span>
+              <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                style={{ width:60, padding:'4px 6px', border:'1px solid var(--dae-border)', borderRadius:'var(--dae-radius-sm)', fontSize:'13px', background:'#fff', cursor:'pointer' }}>
+                {[10, 20, 50].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <span>条 / 共 {filtered.length} 条</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* 上一页 */}
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                style={{ minWidth:28, height:28, padding:'0 6px', borderRadius:'var(--dae-radius-sm)', border:'1px solid var(--dae-border)', background:'#fff',
+                  color: page===1 ? 'var(--dae-ink-subtle)' : 'var(--dae-ink-secondary)', fontSize:'12px', cursor: page===1?'not-allowed':'pointer' }}
+              >&lt;</button>
+              {/* 页码按钮 */}
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                <button key={pageNum} onClick={() => setPage(pageNum)} style={{
+                  minWidth:28, height:28, padding:'0 6px', borderRadius:'var(--dae-radius-sm)',
+                  border: page===pageNum ? '1px solid var(--dae-primary)' : '1px solid var(--dae-border)',
+                  background: page===pageNum ? 'var(--dae-primary)' : '#fff',
+                  color: page===pageNum ? '#fff' : 'var(--dae-ink-secondary)', fontSize:'12px', cursor:'pointer',
+                }}>{pageNum}</button>
+              ))}
+              {/* 下一页 */}
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                style={{ minWidth:28, height:28, padding:'0 6px', borderRadius:'var(--dae-radius-sm)', border:'1px solid var(--dae-border)', background:'#fff',
+                  color: page===totalPages ? 'var(--dae-ink-subtle)' : 'var(--dae-ink-secondary)', fontSize:'12px', cursor: page===totalPages?'not-allowed':'pointer' }}
+              >{'>'}</button>
+              {/* 跳转 */}
+              <span style={{fontSize:'13px',color:'var(--dae-ink-secondary)',marginLeft:8}}>跳至</span>
+              <input type="text" value={jumpPage} onChange={(e)=>setJumpPage(e.target.value.replace(/\D/g,''))}
+                onKeyDown={(e)=>{ if(e.key==='Enter'){ const p=parseInt(jumpPage); if(p>=1&&p<=totalPages)setPage(p); } }}
+                style={{ width:44, height:28, padding:'0 6px', textAlign:'center', border:'1px solid var(--dae-border)', borderRadius:'var(--dae-radius-sm)', fontSize:'13px' }} />
+              <span style={{ fontSize:'13px', color:'var(--dae-ink-secondary)' }}>页</span>
+            </div>
           </div>
         )}
       </div>
-      {pagedData.length > 0 && (
-        <div className="dae-pagination">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)}>&lt;</button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <button key={p} className={p === page ? 'active' : ''} onClick={() => setPage(p)}>{p}</button>
-          ))}
-          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)}>&gt;</button>
-        </div>
-      )}
 
       <Drawer
         open={modalOpen}
@@ -328,6 +422,11 @@ export default function DatasourcePage() {
           </>
         }
       >
+        {form.id && form.status === 'online' && (
+          <div style={{background:'#fef3c7',color:'#92400e',padding:'8px 12px',borderRadius:6,fontSize:13,marginBottom:12}}>
+            当前为已上线状态，编辑保存后将自动变为待上线
+          </div>
+        )}
         {/* 基础信息 */}
         <div style={{ marginBottom: 20 }}>
           <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 12 }}>基础信息</h4>
@@ -484,11 +583,19 @@ export default function DatasourcePage() {
               <div className="dae-input" style={{ background: 'var(--dae-surface)', cursor: 'default' }}>{viewItem.database || '-'}</div>
             </div>
             <div className="dae-form-group">
+              <label>连接状态</label>
+              <div>
+                <span className={`dae-tag ${viewItem.connStatus === 'connected' ? 'dae-tag-green' : 'dae-tag-red'}`}>
+                  {viewItem.connStatus === 'connected' ? '已连接' : '未连接'}
+                </span>
+              </div>
+            </div>
+            <div className="dae-form-group">
               <label>状态</label>
               <div>
-                <span className={`dae-tag ${viewItem.status === 'connected' ? 'dae-tag-green' : 'dae-tag-red'}`}>
-                  {viewItem.status === 'connected' ? '已连接' : '未连接'}
-                </span>
+                {viewItem.status === 'pending' && <span className="dae-tag dae-tag-gray" style={{ whiteSpace: 'nowrap' }}>待上线</span>}
+                {viewItem.status === 'online' && <span className="dae-tag dae-tag-green" style={{ whiteSpace: 'nowrap' }}>已上线</span>}
+                {viewItem.status === 'offline' && <span style={{ background:'#fff7ed', color:'#c2410c', border:'1px solid #fed7aa', padding:'2px 10px', borderRadius:999, fontSize:12, whiteSpace:'nowrap' }}>已下线</span>}
               </div>
             </div>
             <div className="dae-form-group">
@@ -509,10 +616,35 @@ export default function DatasourcePage() {
 
       <DeleteConfirm
         open={delOpen}
-        content={delTarget ? `确定要删除「${delTarget.name}」吗？删除后不可恢复。` : ''}
+        content={delTarget
+          ? (items.find((i) => i.id === delTarget.id)?.status === 'online'
+            ? `「${delTarget.name}」当前为已上线状态，请先下线后再删除。`
+            : `确定要删除「${delTarget.name}」吗？删除后不可恢复。`)
+          : ''
+        }
         onClose={() => { setDelOpen(false); setDelTarget(null); }}
         onConfirm={confirmDelete}
       />
+
+      {/* 复制弹窗 */}
+      <Drawer
+        open={copyOpen}
+        title="复制数据源"
+        onClose={() => setCopyOpen(false)}
+        footer={
+          <>
+            <button className="dae-btn dae-btn-secondary" onClick={() => setCopyOpen(false)}>取消</button>
+            <button className="dae-btn dae-btn-primary" onClick={confirmCopy}>确认</button>
+          </>
+        }
+      >
+        <div className="dae-form-group">
+          <label>数据源名称</label>
+          <input className="dae-input" value={copyName} onChange={(e) => setCopyName(e.target.value)} />
+        </div>
+        <UserPermSelect label="查看权限" selected={copyViewPerm} onChange={setCopyViewPerm} />
+        <UserPermSelect label="管理权限" selected={copyManagePerm} onChange={setCopyManagePerm} />
+      </Drawer>
     </div>
   );
 }

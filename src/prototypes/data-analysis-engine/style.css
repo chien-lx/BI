@@ -65,6 +65,9 @@
   border-bottom: 1px solid var(--dae-border);
   color: var(--dae-ink);
 }
+.dae-table tbody tr:last-child td {
+  border-bottom: none;
+}
 .dae-table tbody tr:hover {
   background: var(--dae-surface-hover);
 }

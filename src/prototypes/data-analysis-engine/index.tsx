@@ -97,7 +97,7 @@ export default function DataAnalysisEngine() {
   if (isFullScreenPage) {
     return (
       <>
-        <div style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div className="dae-page" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <PageComponent />
               </div>
         <AnnotationViewer

@@ -19,17 +19,29 @@ export default function DashboardPreviewPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <PageHeader
-        title={dashboard.name}
-        breadcrumb="数据分析 / 仪表盘 / 预览"
-        actions={
-          <button className="dae-btn dae-btn-secondary" onClick={goBack}>
-            <ArrowLeft size={16} />
-            返回
-          </button>
-        }
-      />
-      <div style={{ flex: 1, overflow: 'auto', padding: 16 }} className="dae-scroll">
+      <div style={{ padding: '16px 24px 0' }}>
+        <PageHeader
+          title={dashboard.name}
+          breadcrumb="数据分析 / 仪表盘 / 预览"
+          actions={
+            <button
+              className="dae-btn"
+              onClick={goBack}
+              style={{
+                background: '#fff',
+                color: 'var(--dae-primary)',
+                border: '1px solid var(--dae-border)',
+                boxShadow: 'var(--dae-shadow-sm)',
+                padding: '8px 20px',
+              }}
+            >
+              <ArrowLeft size={16} />
+              返回
+            </button>
+          }
+        />
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: '0 24px 16px' }} className="dae-scroll">
         {charts.length === 0 ? (
           <div className="dae-empty" style={{ minHeight: 400 }}>
             <BarChart3 size={48} />

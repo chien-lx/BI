@@ -385,6 +385,8 @@ export default function DashboardConfigPage() {
 
   /* ===== 样式具体值 ===== */
   const [titleSettings, setTitleSettings] = useState({ content: '', fontSize: '14', fontWeight: '600', color: '#0f172a', align: 'left' as 'left' | 'center' | 'right' });
+  const [chartPalette, setChartPalette] = useState('#3b82f6');
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [bgSettings, setBgSettings] = useState({ color: '#ffffff' });
   const [borderSettings, setBorderSettings] = useState({ width: '1', style: 'solid' as 'solid' | 'dashed' | 'dotted', color: '#e2e8f0', radius: '8' });
   const [tooltipSettings, setTooltipSettings] = useState({ trigger: 'hover' as 'hover' | 'click', bgColor: '#0f172a', textColor: '#ffffff' });
@@ -451,6 +453,8 @@ export default function DashboardConfigPage() {
     setShowChart(chart.dimensions.length > 0 && chart.metrics.length > 0);
     setFilterConditions([]);
     setTitleSettings({ content: chart.name || '', fontSize: '14', fontWeight: '600', color: '#0f172a', align: 'left' });
+    setChartPalette('#3b82f6');
+    setThemeMode('light');
     setActiveConfigTab('data');
   }, []);
 
@@ -581,39 +585,106 @@ export default function DashboardConfigPage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '8px 16px',
+          padding: '10px 16px',
           background: '#fff',
           borderBottom: '1px solid var(--dae-border)',
           flexShrink: 0,
         }}
       >
         {/* 左侧：返回 + 名称 + 撤销/重做 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className="dae-btn dae-btn-secondary dae-btn-sm" onClick={goBack} title="返回">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <button
+            onClick={goBack}
+            title="返回"
+            style={{
+              width: 32,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '1px solid #d9d9d9',
+              borderRadius: 4,
+              background: '#fff',
+              cursor: 'pointer',
+              color: 'var(--dae-ink)',
+            }}
+          >
             <ArrowLeft size={16} />
           </button>
           <input
-            className="dae-input"
-            style={{ width: 180, fontSize: 14, fontWeight: 600, border: 'none', background: 'transparent', padding: 0 }}
             value={dashboardName}
             onChange={(e) => setDashboardName(e.target.value)}
+            style={{
+              width: 180,
+              fontSize: 15,
+              fontWeight: 600,
+              color: 'var(--dae-ink)',
+              border: 'none',
+              background: 'transparent',
+              padding: 0,
+              outline: 'none',
+            }}
           />
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button className="dae-btn dae-btn-secondary dae-btn-sm" title="撤销"><Undo2 size={14} /></button>
-            <button className="dae-btn dae-btn-secondary dae-btn-sm" title="重做"><Redo2 size={14} /></button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              title="撤销"
+              style={{
+                width: 28,
+                height: 28,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px solid #d9d9d9',
+                borderRadius: 4,
+                background: '#fff',
+                cursor: 'pointer',
+                color: 'var(--dae-ink-secondary)',
+              }}
+            >
+              <Undo2 size={14} />
+            </button>
+            <button
+              title="重做"
+              style={{
+                width: 28,
+                height: 28,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px solid #d9d9d9',
+                borderRadius: 4,
+                background: '#fff',
+                cursor: 'pointer',
+                color: 'var(--dae-ink-secondary)',
+              }}
+            >
+              <Redo2 size={14} />
+            </button>
           </div>
         </div>
 
         {/* 中间：组件工具栏 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center', minWidth: 0, overflow: 'hidden' }}>
           {toolbarItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
                 key={item.label}
-                className="dae-btn dae-btn-secondary dae-btn-sm"
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, height: 'auto', padding: '6px 10px' }}
                 onClick={item.label === '图表' ? addChart : undefined}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 3,
+                  width: 56,
+                  height: 52,
+                  border: '1px solid #d9d9d9',
+                  borderRadius: 4,
+                  background: '#fff',
+                  cursor: 'pointer',
+                  color: 'var(--dae-ink)',
+                }}
               >
                 <Icon size={16} />
                 <span style={{ fontSize: 11 }}>{item.label}</span>
@@ -623,7 +694,7 @@ export default function DashboardConfigPage() {
         </div>
 
         {/* 右侧：预览/保存 */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
           <button className="dae-btn dae-btn-secondary" onClick={goPreview}>
             <Eye size={16} />
             预览
@@ -657,6 +728,7 @@ export default function DashboardConfigPage() {
                   <div
                     key={chart.id}
                     onClick={() => selectChart(chart)}
+                    className={`de-chart-card ${isEditing ? 'de-chart-selected' : ''}`}
                     style={{
                       gridColumn: `span ${colSpan}`,
                       border: isEditing ? '2px solid var(--dae-primary)' : '1px solid var(--dae-border)',
@@ -688,45 +760,50 @@ export default function DashboardConfigPage() {
                         </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {isEditing && <span style={{ fontSize: 11, color: 'var(--dae-primary)', fontWeight: 500 }}>配置中</span>}
                         <button
-                          className="dae-btn dae-btn-secondary dae-btn-sm"
+                          className="dae-icon-action de-chart-delete"
                           onClick={(e) => { e.stopPropagation(); removeChart(chart.id); }}
                           title="删除"
-                          style={{ color: '#ef4444' }}
+                          style={{ color: '#ef4444', width: 24, height: 24 }}
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </div>
                     <div style={{ flex: 1, padding: 14, minHeight: 200 }}>
-                      {chart.dimensions.length > 0 && chart.metrics.length > 0 ? (
-                        chart.type === 'table' ? (
+                      {(() => {
+                        const isCurrentEditing = isEditing;
+                        const dims = isCurrentEditing ? dimensions : chart.dimensions;
+                        const mets = isCurrentEditing ? metrics : chart.metrics;
+                        const cType = isCurrentEditing ? chartType : chart.type;
+                        return dims.length > 0 && mets.length > 0 ? (
+                        cType === 'table' ? (
                           <div className="dae-scroll" style={{ overflow: 'auto' }}>
                             <table className="dae-table">
                               <thead>
-                                <tr><th>序号</th>{chart.dimensions.map((d) => (<th key={d}>{d}</th>))}{chart.metrics.map((m) => (<th key={m}>{m}</th>))}</tr>
+                                <tr><th>序号</th>{dims.map((d: string | SelectedField, i: number) => (<th key={i}>{typeof d === 'string' ? d : d.alias || d.name}</th>))}{mets.map((m: string | SelectedField, i: number) => (<th key={i}>{typeof m === 'string' ? m : m.alias || m.name}</th>))}</tr>
                               </thead>
                               <tbody>
                                 {chartSampleData.map((row, idx) => (
                                   <tr key={idx}>
                                     <td>{idx + 1}</td>
-                                    {chart.dimensions.map((d) => (<td key={d}>{row.name}</td>))}
-                                    {chart.metrics.map((m) => (<td key={m}>{row.value}</td>))}
+                                    {dims.map((d: string | SelectedField, i: number) => (<td key={i}>{row.name}</td>))}
+                                    {mets.map((m: string | SelectedField, i: number) => (<td key={i}>{row.value}</td>))}
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
                           </div>
                         ) : (
-                          <ChartRenderer type={chart.type} data={getChartPreviewData(chart)} yKeys={chart.type === 'pie' ? undefined : ['value', 'value2']} height={260} />
+                          <ChartRenderer type={cType} data={cType === 'pie' ? pieSampleData : chartSampleData} yKeys={cType === 'pie' ? undefined : ['value', 'value2']} height={260} />
                         )
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--dae-ink-muted)', gap: 8 }}>
                           <BarChart3 size={32} />
                           <span style={{ fontSize: 13 }}>未配置数据，点击卡片选中后配置</span>
                         </div>
-                      )}
+                      );
+                      })()}
                     </div>
                   </div>
                 );
@@ -753,7 +830,7 @@ export default function DashboardConfigPage() {
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--dae-ink)' }}>
                 {chartTypeOptions.find((t) => t.key === chartType)?.label || '图表'}
               </span>
-              <button className="dae-btn dae-btn-secondary dae-btn-sm" onClick={deselectChart}>
+              <button className="dae-icon-action" onClick={deselectChart} title="关闭">
                 <X size={14} />
               </button>
             </div>
@@ -786,39 +863,36 @@ export default function DashboardConfigPage() {
               {/* ===== 数据 Tab ===== */}
               {activeConfigTab === 'data' && (
                 <div style={{ padding: '12px 14px' }}>
-                  <div className="dae-form-group">
-                    <label style={{ fontSize: 12 }}>图表名称</label>
-                    <input className="dae-input" style={{ fontSize: 13 }} value={chartName} onChange={(e) => setChartName(e.target.value)} />
+                  <div className="de-config-section">
+                    <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 12 }}>图表名称</label>
+                      <input className="dae-input" style={{ fontSize: 13 }} value={chartName} onChange={(e) => setChartName(e.target.value)} />
+                    </div>
                   </div>
 
-                  <div className="dae-form-group">
-                    <label style={{ fontSize: 12 }}>数据集</label>
-                    <select className="dae-input" style={{ fontSize: 13 }} value={selectedDataset} onChange={(e) => { setSelectedDataset(e.target.value); setShowChart(false); setDimensions([]); setMetrics([]); }}>
-                      {datasets.filter((d) => d.status === 'online').map((d) => (<option key={d.id} value={d.name}>{d.name}</option>))}
-                    </select>
-                  </div>
-
-                  <div className="dae-form-group" style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: 12 }}>图表类型</label>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {chartTypeOptions.map((t) => {
-                        const Icon = t.icon;
-                        return (
-                          <button key={t.key} className={`de-mid-chart-btn ${chartType === t.key ? 'active' : ''}`} onClick={() => setChartType(t.key)} title={t.label} style={{ width: 44, height: 32 }}>
-                            <Icon size={16} />
-                          </button>
-                        );
-                      })}
+                  <div className="de-config-section">
+                    <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 12 }}>图表类型</label>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {chartTypeOptions.map((t) => {
+                          const Icon = t.icon;
+                          return (
+                            <button key={t.key} className={`de-mid-chart-btn ${chartType === t.key ? 'active' : ''}`} onClick={() => setChartType(t.key)} title={t.label} style={{ width: 44, height: 32 }}>
+                              <Icon size={16} />
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
 
                   {/* 维度 */}
-                  <div style={{ marginBottom: 12 }}>
+                  <div className="de-config-section">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600 }}>维度</label>
                       <span style={{ fontSize: 11, color: 'var(--dae-ink-muted)' }}>点击右侧字段添加</span>
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minHeight: 28 }}>
                       {dimensions.map((d) => (
                         <div key={d.name} style={{ position: 'relative' }}>
                           <div className="de-pill de-pill-dim" style={{ opacity: d.visible === false ? 0.5 : 1 }}>
@@ -851,12 +925,12 @@ export default function DashboardConfigPage() {
                   </div>
 
                   {/* 指标 */}
-                  <div style={{ marginBottom: 12 }}>
+                  <div className="de-config-section">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600 }}>指标</label>
                       <span style={{ fontSize: 11, color: 'var(--dae-ink-muted)' }}>点击右侧字段添加</span>
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minHeight: 28 }}>
                       {metrics.map((m) => (
                         <div key={m.name} style={{ position: 'relative' }}>
                           <div className="de-pill de-pill-metric" style={{ opacity: m.visible === false ? 0.5 : 1 }}>
@@ -888,10 +962,24 @@ export default function DashboardConfigPage() {
                   </div>
 
                   {/* 数据过滤 */}
-                  <div style={{ marginBottom: 12 }}>
+                  <div className="de-config-section">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                       <label style={{ fontSize: 12, fontWeight: 600 }}>数据过滤</label>
-                      <button className="dae-btn dae-btn-secondary dae-btn-sm" onClick={() => setFilterModalOpen(true)}>
+                      <button
+                        onClick={() => setFilterModalOpen(true)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '2px 0',
+                          fontSize: 12,
+                          color: 'var(--dae-primary)',
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontWeight: 500,
+                        }}
+                      >
                         <Filter size={12} />
                         配置过滤
                       </button>
@@ -910,48 +998,40 @@ export default function DashboardConfigPage() {
                     )}
                   </div>
 
+                  {/* 数据更新 */}
+                  <div className="de-config-section">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <label style={{ fontSize: 12, fontWeight: 600 }}>数据更新</label>
+                    </div>
+                    <div className="dae-form-group" style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: 12 }}>自动刷新间隔</label>
+                      <select className="dae-input" style={{ fontSize: 13 }} value={refreshInterval} onChange={(e) => setRefreshInterval(e.target.value)}>
+                        <option value="0">关闭</option>
+                        <option value="30">30 秒</option>
+                        <option value="60">1 分钟</option>
+                        <option value="120">2 分钟</option>
+                        <option value="300">5 分钟</option>
+                        <option value="600">10 分钟</option>
+                      </select>
+                    </div>
+                    <div>
+                      <button
+                        className="dae-btn dae-btn-primary dae-btn-sm"
+                        style={{ flex: 1, width: '100%' }}
+                        onClick={() => { /* 手动刷新 */ }}
+                      >
+                        <RefreshCw size={12} />
+                        立即刷新
+                      </button>
+                    </div>
+                  </div>
+
                   {/* 操作 */}
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                    <button className="dae-btn dae-btn-secondary dae-btn-sm" onClick={clearAll}>
-                      <RotateCcw size={12} />
-                      重置
-                    </button>
-                    <button className="dae-btn dae-btn-primary dae-btn-sm" onClick={handleQuery} disabled={dimensions.length === 0 || metrics.length === 0}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="dae-btn dae-btn-primary dae-btn-sm" onClick={handleQuery} disabled={dimensions.length === 0 || metrics.length === 0} style={{ flex: 1 }}>
                       <Search size={12} />
                       查询
                     </button>
-                  </div>
-
-                  {/* 预览 */}
-                  <div style={{ borderTop: '1px solid var(--dae-border)', paddingTop: 12 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 8 }}>预览</div>
-                    {showChart ? (
-                      chartType === 'table' ? (
-                        <div className="dae-scroll" style={{ overflow: 'auto' }}>
-                          <table className="dae-table">
-                            <thead>
-                              <tr><th>序号</th>{dimensions.map((d) => (<th key={d.name}>{d.alias || d.name}</th>))}{metrics.map((m) => (<th key={m.name}>{m.alias || m.name} ({m.aggregation})</th>))}</tr>
-                            </thead>
-                            <tbody>
-                              {chartSampleData.map((row, idx) => (
-                                <tr key={idx}>
-                                  <td>{idx + 1}</td>
-                                  {dimensions.map((d) => (<td key={d.name}>{row.name}</td>))}
-                                  {metrics.map((m) => (<td key={m.name}>{row.value}</td>))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <ChartRenderer type={chartType} data={chartData} yKeys={chartType === 'pie' ? undefined : ['value', 'value2']} height={220} />
-                      )
-                    ) : (
-                      <div className="dae-empty" style={{ minHeight: 160, padding: 16 }}>
-                        <BarChart3 size={32} />
-                        <p style={{ fontSize: 12 }}>选择维度指标后点击查询</p>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -967,7 +1047,20 @@ export default function DashboardConfigPage() {
                         <label style={{ fontSize: 12 }}>图表色系</label>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           {['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'].map((c) => (
-                            <div key={c} style={{ width: 18, height: 18, borderRadius: 4, background: c, cursor: 'pointer' }} />
+                            <div
+                              key={c}
+                              onClick={() => setChartPalette(c)}
+                              style={{
+                                width: 18,
+                                height: 18,
+                                borderRadius: 4,
+                                background: c,
+                                cursor: 'pointer',
+                                border: chartPalette === c ? '2px solid var(--dae-ink)' : '2px solid transparent',
+                                boxShadow: chartPalette === c ? '0 0 0 2px rgba(59,130,246,0.3)' : 'none',
+                                transition: 'all 0.15s',
+                              }}
+                            />
                           ))}
                         </div>
                       </div>
@@ -975,7 +1068,7 @@ export default function DashboardConfigPage() {
                         <label style={{ fontSize: 12 }}>主题模式</label>
                         <div style={{ display: 'flex', gap: 4 }}>
                           {(['light', 'dark'] as const).map((mode) => (
-                            <button key={mode} className="de-mid-chart-btn active" style={{ flex: 1, height: 28, fontSize: 12 }}>
+                            <button key={mode} className={`de-mid-chart-btn ${themeMode === mode ? 'active' : ''}`} style={{ flex: 1, height: 28, fontSize: 12 }} onClick={() => setThemeMode(mode)}>
                               {mode === 'light' ? '浅色' : '深色'}
                             </button>
                           ))}
@@ -1047,15 +1140,25 @@ export default function DashboardConfigPage() {
                         <input className="dae-input" style={{ fontSize: 13 }} value={borderSettings.width} onChange={(e) => setBorderSettings((s) => ({ ...s, width: e.target.value }))} />
                       </div>
                       <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>边框线型</label>
+                        <select className="dae-input" style={{ fontSize: 13 }} value={borderSettings.style} onChange={(e) => setBorderSettings((s) => ({ ...s, style: e.target.value as 'solid' | 'dashed' | 'dotted' }))}>
+                          <option value="solid">实线</option>
+                          <option value="dashed">虚线</option>
+                          <option value="dotted">点线</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
                         <label style={{ fontSize: 12 }}>圆角</label>
                         <input className="dae-input" style={{ fontSize: 13 }} value={borderSettings.radius} onChange={(e) => setBorderSettings((s) => ({ ...s, radius: e.target.value }))} />
                       </div>
-                    </div>
-                    <div className="dae-form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ fontSize: 12 }}>边框颜色</label>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <input type="color" value={borderSettings.color} onChange={(e) => setBorderSettings((s) => ({ ...s, color: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
-                        <input className="dae-input" value={borderSettings.color} onChange={(e) => setBorderSettings((s) => ({ ...s, color: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>边框颜色</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input type="color" value={borderSettings.color} onChange={(e) => setBorderSettings((s) => ({ ...s, color: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                          <input className="dae-input" value={borderSettings.color} onChange={(e) => setBorderSettings((s) => ({ ...s, color: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                        </div>
                       </div>
                     </div>
                   </StyleCollapseItem>
@@ -1288,6 +1391,48 @@ export default function DashboardConfigPage() {
                 </div>
               )}
             </div>
+
+            {/* 底部操作按钮 */}
+            {editingChartId && (
+              <div style={{ padding: '12px 14px', borderTop: '1px solid var(--dae-border)', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fff' }}>
+                <button
+                  onClick={deselectChart}
+                  style={{
+                    padding: '6px 16px',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    color: 'var(--dae-ink)',
+                    background: '#fff',
+                    border: '1px solid #d9d9d9',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                  }}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => {
+                    const packed = packChart();
+                    if (packed) {
+                      setChartList((prev) => prev.map((c) => (c.id === editingChartId ? packed : c)));
+                    }
+                    deselectChart();
+                  }}
+                  style={{
+                    padding: '6px 16px',
+                    fontSize: 14,
+                    fontWeight: 500,
+                    color: '#fff',
+                    background: 'var(--dae-primary)',
+                    border: '1px solid var(--dae-primary)',
+                    borderRadius: 6,
+                    cursor: 'pointer',
+                  }}
+                >
+                  保存
+                </button>
+              </div>
+            )}
           </div>
         )}
 

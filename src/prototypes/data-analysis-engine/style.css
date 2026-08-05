@@ -569,6 +569,32 @@
   cursor: not-allowed;
 }
 
+/* ==================== Dashboard Config ==================== */
+
+/* Chart card: delete button only visible on hover or when selected */
+.de-chart-card .de-chart-delete {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.de-chart-card:hover .de-chart-delete,
+.de-chart-card.de-chart-selected .de-chart-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+.de-chart-card .de-chart-delete:hover {
+  background: #fef2f2;
+}
+
+/* Config section: bordered grouping */
+.de-config-section {
+  border: 1px solid var(--dae-border);
+  border-radius: var(--dae-radius-md);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
 /* ==================== Data Explore ==================== */
 
 /* Field list item */
@@ -616,23 +642,24 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
-  border-radius: var(--dae-radius-md);
+  padding: 4px 10px;
+  border-radius: var(--dae-radius-sm);
   font-size: 12px;
   font-weight: 500;
   border: 1px solid transparent;
   cursor: default;
   user-select: none;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 .de-pill-dim {
   background: #e6f4ff;
   color: #1677FF;
-  border-color: #bae0ff;
+  border-color: #91caff;
 }
 .de-pill-metric {
   background: #dcfce7;
   color: #15803d;
-  border-color: #bbf7d0;
+  border-color: #86efac;
 }
 .de-pill-limit {
   background: #f1f5f9;

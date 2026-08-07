@@ -272,6 +272,19 @@ export const dashboards: DashboardItem[] = [
   ]},
 ];
 
+export interface DataScreenComponent {
+  id: string;
+  name: string;
+  type: 'bar' | 'line' | 'area' | 'pie' | 'card' | 'text' | 'image';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  datasetName?: string;
+  dimensions?: string[];
+  metrics?: string[];
+}
+
 // ==================== 数据大屏 ====================
 export interface DataScreenItem {
   id: string;
@@ -281,24 +294,173 @@ export interface DataScreenItem {
   createdAt: string;
   updatedAt: string;
   status: 'pending' | 'online' | 'offline';
+  bgColor?: string;
+  bgImage?: string;
+  components?: DataScreenComponent[];
 }
 
 export const dataScreens: DataScreenItem[] = [
-  { id: 'SC001', name: '618 大促实时大屏', resolution: '3840×1080', creator: '张三', createdAt: '2026-05-15', updatedAt: '2026-06-10', status: 'online' },
-  { id: 'SC002', name: '双11 作战指挥屏', resolution: '5760×2160', creator: '李四', createdAt: '2026-05-20', updatedAt: '2026-06-09', status: 'online' },
-  { id: 'SC003', name: '供应链全局监控', resolution: '3840×1080', creator: '王五', createdAt: '2026-06-01', updatedAt: '2026-06-08', status: 'pending' },
-  { id: 'SC004', name: '财务数据展示屏', resolution: '1920×1080', creator: '赵六', createdAt: '2026-05-25', updatedAt: '2026-06-07', status: 'offline' },
-  { id: 'SC005', name: '城市交通指挥屏', resolution: '3840×1080', creator: 'data_team', createdAt: '2026-05-18', updatedAt: '2026-06-06', status: 'online' },
-  { id: 'SC006', name: '生产车间可视化', resolution: '2560×1440', creator: 'factory_team', createdAt: '2026-05-28', updatedAt: '2026-06-08', status: 'online' },
-  { id: 'SC007', name: '零售门店数据屏', resolution: '1920×1080', creator: 'retail_team', createdAt: '2026-05-22', updatedAt: '2026-06-05', status: 'online' },
-  { id: 'SC008', name: '能源消耗监控屏', resolution: '3840×1080', creator: 'energy_team', createdAt: '2026-05-30', updatedAt: '2026-06-07', status: 'online' },
-  { id: 'SC009', name: '医疗资源调度屏', resolution: '2560×1440', creator: 'medical_team', createdAt: '2026-06-02', updatedAt: '2026-06-06', status: 'pending' },
-  { id: 'SC010', name: '教育质量分析屏', resolution: '1920×1080', creator: 'edu_team', createdAt: '2026-05-26', updatedAt: '2026-06-04', status: 'online' },
-  { id: 'SC011', name: '金融风控大屏', resolution: '5760×2160', creator: 'finance_team', createdAt: '2026-05-16', updatedAt: '2026-06-09', status: 'online' },
-  { id: 'SC012', name: '智慧园区展示屏', resolution: '3840×1080', creator: 'park_team', createdAt: '2026-05-29', updatedAt: '2026-06-08', status: 'online' },
-  { id: 'SC013', name: '政务数据公开屏', resolution: '1920×1080', creator: 'gov_team', createdAt: '2026-06-03', updatedAt: '2026-06-05', status: 'pending' },
-  { id: 'SC014', name: '体育赛事直播屏', resolution: '3840×1080', creator: 'sports_team', createdAt: '2026-05-24', updatedAt: '2026-06-07', status: 'online' },
-  { id: 'SC015', name: '旅游客流分析屏', resolution: '2560×1440', creator: 'travel_team', createdAt: '2026-05-31', updatedAt: '2026-06-09', status: 'online' },
+  {
+    id: 'SC001', name: '618 大促实时大屏', resolution: '3840×1080', creator: '张三', createdAt: '2026-05-15', updatedAt: '2026-06-10', status: 'online',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc1-c1', name: 'GMV 实时趋势', type: 'line', x: 40, y: 80, w: 800, h: 360 },
+      { id: 'sc1-c2', name: '品类销售占比', type: 'pie', x: 880, y: 80, w: 520, h: 360 },
+      { id: 'sc1-c3', name: '今日成交额', type: 'card', x: 1440, y: 80, w: 320, h: 160 },
+      { id: 'sc1-c4', name: '订单量趋势', type: 'area', x: 40, y: 480, w: 920, h: 360 },
+      { id: 'sc1-c5', name: 'TOP 城市排行', type: 'bar', x: 1000, y: 480, w: 760, h: 360 },
+    ],
+  },
+  {
+    id: 'SC002', name: '双11 作战指挥屏', resolution: '5760×2160', creator: '李四', createdAt: '2026-05-20', updatedAt: '2026-06-09', status: 'online',
+    bgColor: '#050b1a',
+    components: [
+      { id: 'sc2-c1', name: '全网销售额', type: 'card', x: 80, y: 100, w: 400, h: 180 },
+      { id: 'sc2-c2', name: '用户增长曲线', type: 'line', x: 520, y: 100, w: 900, h: 420 },
+      { id: 'sc2-c3', name: '渠道占比', type: 'pie', x: 1460, y: 100, w: 520, h: 420 },
+      { id: 'sc2-c4', name: '订单热力图', type: 'bar', x: 80, y: 560, w: 1200, h: 520 },
+      { id: 'sc2-c5', name: '实时库存', type: 'area', x: 1320, y: 560, w: 900, h: 520 },
+    ],
+  },
+  {
+    id: 'SC003', name: '供应链全局监控', resolution: '3840×1080', creator: '王五', createdAt: '2026-06-01', updatedAt: '2026-06-08', status: 'pending',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc3-c1', name: '在途订单数', type: 'card', x: 60, y: 80, w: 340, h: 160 },
+      { id: 'sc3-c2', name: '物流时效趋势', type: 'line', x: 440, y: 80, w: 780, h: 360 },
+      { id: 'sc3-c3', name: '仓储分布', type: 'pie', x: 1260, y: 80, w: 500, h: 360 },
+      { id: 'sc3-c4', name: '缺货预警', type: 'bar', x: 60, y: 480, w: 900, h: 360 },
+      { id: 'sc3-c5', name: '到货准时率', type: 'area', x: 1000, y: 480, w: 760, h: 360 },
+    ],
+  },
+  {
+    id: 'SC004', name: '财务数据展示屏', resolution: '1920×1080', creator: '赵六', createdAt: '2026-05-25', updatedAt: '2026-06-07', status: 'offline',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc4-c1', name: '营业收入', type: 'card', x: 40, y: 60, w: 280, h: 140 },
+      { id: 'sc4-c2', name: '净利润', type: 'card', x: 340, y: 60, w: 280, h: 140 },
+      { id: 'sc4-c3', name: '收支趋势', type: 'line', x: 40, y: 240, w: 920, h: 360 },
+      { id: 'sc4-c4', name: '成本结构', type: 'pie', x: 1000, y: 240, w: 520, h: 360 },
+      { id: 'sc4-c5', name: '费用对比', type: 'bar', x: 40, y: 640, w: 1480, h: 320 },
+    ],
+  },
+  {
+    id: 'SC005', name: '城市交通指挥屏', resolution: '3840×1080', creator: 'data_team', createdAt: '2026-05-18', updatedAt: '2026-06-06', status: 'online',
+    bgColor: '#050b1a',
+    components: [
+      { id: 'sc5-c1', name: '拥堵指数', type: 'card', x: 60, y: 80, w: 360, h: 160 },
+      { id: 'sc5-c2', name: '流量趋势', type: 'line', x: 460, y: 80, w: 820, h: 360 },
+      { id: 'sc5-c3', name: '事故类型分布', type: 'pie', x: 1320, y: 80, w: 480, h: 360 },
+      { id: 'sc5-c4', name: '主干道车速', type: 'bar', x: 60, y: 480, w: 900, h: 360 },
+      { id: 'sc5-c5', name: '通行量预测', type: 'area', x: 1000, y: 480, w: 800, h: 360 },
+    ],
+  },
+  {
+    id: 'SC006', name: '生产车间可视化', resolution: '2560×1440', creator: 'factory_team', createdAt: '2026-05-28', updatedAt: '2026-06-08', status: 'online',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc6-c1', name: '产量达成率', type: 'card', x: 40, y: 60, w: 320, h: 160 },
+      { id: 'sc6-c2', name: '设备 OEE', type: 'card', x: 380, y: 60, w: 320, h: 160 },
+      { id: 'sc6-c3', name: '产线良率', type: 'line', x: 40, y: 260, w: 760, h: 340 },
+      { id: 'sc6-c4', name: '缺陷分布', type: 'pie', x: 840, y: 260, w: 520, h: 340 },
+      { id: 'sc6-c5', name: '能耗趋势', type: 'area', x: 40, y: 640, w: 1320, h: 320 },
+    ],
+  },
+  {
+    id: 'SC007', name: '零售门店数据屏', resolution: '1920×1080', creator: 'retail_team', createdAt: '2026-05-22', updatedAt: '2026-06-05', status: 'online',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc7-c1', name: '今日销售额', type: 'card', x: 40, y: 60, w: 300, h: 140 },
+      { id: 'sc7-c2', name: '客流趋势', type: 'line', x: 40, y: 240, w: 920, h: 340 },
+      { id: 'sc7-c3', name: '品类占比', type: 'pie', x: 1000, y: 240, w: 520, h: 340 },
+      { id: 'sc7-c4', name: '时段销售', type: 'bar', x: 40, y: 620, w: 1480, h: 340 },
+    ],
+  },
+  {
+    id: 'SC008', name: '能源消耗监控屏', resolution: '3840×1080', creator: 'energy_team', createdAt: '2026-05-30', updatedAt: '2026-06-07', status: 'online',
+    bgColor: '#050b1a',
+    components: [
+      { id: 'sc8-c1', name: '总能耗', type: 'card', x: 60, y: 80, w: 360, h: 160 },
+      { id: 'sc8-c2', name: '能耗趋势', type: 'line', x: 460, y: 80, w: 880, h: 360 },
+      { id: 'sc8-c3', name: '能源结构', type: 'pie', x: 1380, y: 80, w: 480, h: 360 },
+      { id: 'sc8-c4', name: '区域能耗对比', type: 'bar', x: 60, y: 480, w: 920, h: 360 },
+      { id: 'sc8-c5', name: '碳排放预测', type: 'area', x: 1020, y: 480, w: 840, h: 360 },
+    ],
+  },
+  {
+    id: 'SC009', name: '医疗资源调度屏', resolution: '2560×1440', creator: 'medical_team', createdAt: '2026-06-02', updatedAt: '2026-06-06', status: 'pending',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc9-c1', name: '在院患者', type: 'card', x: 40, y: 60, w: 320, h: 160 },
+      { id: 'sc9-c2', name: '床位使用率', type: 'card', x: 380, y: 60, w: 320, h: 160 },
+      { id: 'sc9-c3', name: '科室负荷', type: 'bar', x: 40, y: 260, w: 760, h: 340 },
+      { id: 'sc9-c4', name: '急救趋势', type: 'line', x: 840, y: 260, w: 520, h: 340 },
+      { id: 'sc9-c5', name: '药品库存', type: 'area', x: 40, y: 640, w: 1320, h: 320 },
+    ],
+  },
+  {
+    id: 'SC010', name: '教育质量分析屏', resolution: '1920×1080', creator: 'edu_team', createdAt: '2026-05-26', updatedAt: '2026-06-04', status: 'online',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc10-c1', name: '学生总数', type: 'card', x: 40, y: 60, w: 300, h: 140 },
+      { id: 'sc10-c2', name: '成绩分布', type: 'bar', x: 40, y: 240, w: 920, h: 340 },
+      { id: 'sc10-c3', name: '学科占比', type: 'pie', x: 1000, y: 240, w: 520, h: 340 },
+      { id: 'sc10-c4', name: '出勤趋势', type: 'line', x: 40, y: 620, w: 1480, h: 340 },
+    ],
+  },
+  {
+    id: 'SC011', name: '金融风控大屏', resolution: '5760×2160', creator: 'finance_team', createdAt: '2026-05-16', updatedAt: '2026-06-09', status: 'online',
+    bgColor: '#050b1a',
+    components: [
+      { id: 'sc11-c1', name: '风险交易数', type: 'card', x: 80, y: 100, w: 400, h: 180 },
+      { id: 'sc11-c2', name: '交易趋势', type: 'line', x: 520, y: 100, w: 900, h: 420 },
+      { id: 'sc11-c3', name: '风险类型', type: 'pie', x: 1460, y: 100, w: 520, h: 420 },
+      { id: 'sc11-c4', name: '拦截统计', type: 'bar', x: 80, y: 560, w: 1200, h: 520 },
+      { id: 'sc11-c5', name: '规则命中', type: 'area', x: 1320, y: 560, w: 900, h: 520 },
+    ],
+  },
+  {
+    id: 'SC012', name: '智慧园区展示屏', resolution: '3840×1080', creator: 'park_team', createdAt: '2026-05-29', updatedAt: '2026-06-08', status: 'online',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc12-c1', name: '园区总人数', type: 'card', x: 60, y: 80, w: 360, h: 160 },
+      { id: 'sc12-c2', name: '能耗监控', type: 'line', x: 460, y: 80, w: 860, h: 360 },
+      { id: 'sc12-c3', name: '车位占用', type: 'pie', x: 1360, y: 80, w: 480, h: 360 },
+      { id: 'sc12-c4', name: '安防事件', type: 'bar', x: 60, y: 480, w: 920, h: 360 },
+      { id: 'sc12-c5', name: '环境监测', type: 'area', x: 1020, y: 480, w: 820, h: 360 },
+    ],
+  },
+  {
+    id: 'SC013', name: '政务数据公开屏', resolution: '1920×1080', creator: 'gov_team', createdAt: '2026-06-03', updatedAt: '2026-06-05', status: 'pending',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc13-c1', name: '办件总量', type: 'card', x: 40, y: 60, w: 300, h: 140 },
+      { id: 'sc13-c2', name: '事项办理趋势', type: 'line', x: 40, y: 240, w: 920, h: 340 },
+      { id: 'sc13-c3', name: '部门占比', type: 'pie', x: 1000, y: 240, w: 520, h: 340 },
+      { id: 'sc13-c4', name: '满意度评价', type: 'bar', x: 40, y: 620, w: 1480, h: 340 },
+    ],
+  },
+  {
+    id: 'SC014', name: '体育赛事直播屏', resolution: '3840×1080', creator: 'sports_team', createdAt: '2026-05-24', updatedAt: '2026-06-07', status: 'online',
+    bgColor: '#050b1a',
+    components: [
+      { id: 'sc14-c1', name: '实时观众', type: 'card', x: 60, y: 80, w: 360, h: 160 },
+      { id: 'sc14-c2', name: '收视趋势', type: 'line', x: 460, y: 80, w: 860, h: 360 },
+      { id: 'sc14-c3', name: '平台分布', type: 'pie', x: 1360, y: 80, w: 480, h: 360 },
+      { id: 'sc14-c4', name: '热门项目', type: 'bar', x: 60, y: 480, w: 920, h: 360 },
+      { id: 'sc14-c5', name: '互动量', type: 'area', x: 1020, y: 480, w: 820, h: 360 },
+    ],
+  },
+  {
+    id: 'SC015', name: '旅游客流分析屏', resolution: '2560×1440', creator: 'travel_team', createdAt: '2026-05-31', updatedAt: '2026-06-09', status: 'online',
+    bgColor: '#0b1121',
+    components: [
+      { id: 'sc15-c1', name: '今日客流', type: 'card', x: 40, y: 60, w: 320, h: 160 },
+      { id: 'sc15-c2', name: '客流预测', type: 'line', x: 40, y: 260, w: 760, h: 340 },
+      { id: 'sc15-c3', name: '来源地分布', type: 'pie', x: 840, y: 260, w: 520, h: 340 },
+      { id: 'sc15-c4', name: '景区热度', type: 'bar', x: 40, y: 640, w: 1320, h: 320 },
+    ],
+  },
 ];
 
 // ==================== 用户管理 ====================

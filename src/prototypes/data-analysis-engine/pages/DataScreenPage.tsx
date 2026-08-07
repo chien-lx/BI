@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Monitor, Eye, Pencil, Trash2, ShieldCheck, Copy } from 'lucide-react';
+import { Plus, Monitor, Eye, Pencil, Trash2, ShieldCheck, Copy, Settings } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import SearchFilter from '../components/SearchFilter';
 import Drawer from '../components/Drawer';
@@ -33,8 +33,11 @@ export default function DataScreenPage() {
   const [copyManagePerm, setCopyManagePerm] = useState<string[]>([]);
 
   const openView = (item: DataScreenItem) => {
-    setViewItem(item);
-    setViewOpen(true);
+    window.location.hash = `page=data-screen-preview&screenId=${item.id}`;
+  };
+
+  const openConfig = (item: DataScreenItem) => {
+    window.location.hash = `page=data-screen-config&screenId=${item.id}`;
   };
 
   const openModal = (item: DataScreenItem) => {
@@ -104,7 +107,7 @@ export default function DataScreenPage() {
         title="数据大屏"
         breadcrumb="数据分析 / 数据大屏"
         actions={
-          <button className="dae-btn dae-btn-primary" onClick={() => { setForm({}); setViewPerm([]); setManagePerm([]); setModalOpen(true); }}>
+          <button className="dae-btn dae-btn-primary" onClick={() => { window.location.hash = 'page=data-screen-config'; }}>
             <Plus size={16} />
             新建大屏
           </button>
@@ -148,6 +151,7 @@ export default function DataScreenPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <StatusSwitch status={item.status} onToggle={() => toggleStatus(item)} />
                     <IconAction icon={<Eye size={16} />} label="查看" onClick={() => openView(item)} />
+                    <IconAction icon={<Settings size={16} />} label="配置" onClick={() => openConfig(item)} />
                     <IconAction icon={<Pencil size={16} />} label="编辑" onClick={() => openModal(item)} />
                     <IconAction icon={<Copy size={16} />} label="复制" onClick={() => openCopy(item)} />
                     <IconAction icon={<Trash2 size={16} />} label="删除" onClick={() => openDelete(item)} />

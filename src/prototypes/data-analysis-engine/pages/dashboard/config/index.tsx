@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
   Save,
@@ -109,7 +109,7 @@ function StyleCollapseItem({
           }}
         />
       </div>
-      {isOpen && enabled && <div style={{ padding: '0 14px 12px' }}>{children}</div>}
+      {isOpen && <div style={{ padding: '0 14px 12px' }}>{children}</div>}
     </div>
   );
 }
@@ -344,13 +344,24 @@ export default function DashboardConfigPage() {
   const dashboardId = hashParams['dashboardId'];
   const dashboard = dashboardId ? dashboards.find((d) => d.id === dashboardId) : undefined;
 
-  const [chartList, setChartList] = useState<DashboardChart[]>(
-    (dashboard?.charts || []).map((c, i) => ({
-      ...c,
-      w: c.w || (i % 3 === 0 ? 2 : 1),
-      h: c.h || 1,
-    }))
-  );
+  const [chartList, setChartList] = useState<DashboardChart[]>(() => {
+    const list = dashboard?.charts || [];
+    const cols = 3;
+    const cardW = 376;
+    const cardH = 280;
+    const gap = 16;
+    return list.map((c, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      return {
+        ...c,
+        x: typeof c.x === 'number' ? c.x : col * (cardW + gap),
+        y: typeof c.y === 'number' ? c.y : row * (cardH + gap),
+        w: c.w || cardW,
+        h: c.h || cardH,
+      };
+    });
+  });
   const [dashboardName, setDashboardName] = useState(dashboard?.name || '新建仪表盘');
   const [editingChartId, setEditingChartId] = useState<string | null>(null);
 
@@ -372,28 +383,29 @@ export default function DashboardConfigPage() {
   /* ===== 样式配置开关 ===== */
   const [styleSwitches, setStyleSwitches] = useState({
     title: true,
-    background: false,
-    border: false,
-    tooltip: false,
-    tableHeader: false,
-    cell: false,
-    total: false,
-    funcSettings: false,
-    scroll: false,
-    conditional: false,
+    background: true,
+    border: true,
+    tooltip: true,
+    tableHeader: true,
+    cell: true,
+    total: true,
+    funcSettings: true,
+    scroll: true,
+    conditional: true,
   });
 
   /* ===== 样式具体值 ===== */
-  const [titleSettings, setTitleSettings] = useState({ content: '', fontSize: '14', fontWeight: '600', color: '#0f172a', align: 'left' as 'left' | 'center' | 'right' });
+  const [titleSettings, setTitleSettings] = useState({ content: '', fontSize: '14', fontWeight: '600', color: '#0f172a', align: 'left' as 'left' | 'center' | 'right', visible: true, marginBottom: '12' });
   const [chartPalette, setChartPalette] = useState('#3b82f6');
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
-  const [bgSettings, setBgSettings] = useState({ color: '#ffffff' });
+  const [bgSettings, setBgSettings] = useState({ color: '#ffffff', padding: '12', radius: '8', shadow: '0 1px 3px rgba(0,0,0,0.08)', gradientEnabled: false, gradientFrom: '#ffffff', gradientTo: '#f8fafc' });
   const [borderSettings, setBorderSettings] = useState({ width: '1', style: 'solid' as 'solid' | 'dashed' | 'dotted', color: '#e2e8f0', radius: '8' });
-  const [tooltipSettings, setTooltipSettings] = useState({ trigger: 'hover' as 'hover' | 'click', bgColor: '#0f172a', textColor: '#ffffff' });
-  const [headerSettings, setHeaderSettings] = useState({ bgColor: '#f8fafc', textColor: '#334155', fontSize: '13', fontWeight: '500' });
-  const [cellSettings, setCellSettings] = useState({ fontSize: '12', padding: '8' });
-  const [totalSettings, setTotalSettings] = useState({ position: 'bottom' as 'top' | 'bottom', label: '合计' });
-  const [scrollSettings, setScrollSettings] = useState({ x: true, y: true, maxHeight: '400' });
+  const [tooltipSettings, setTooltipSettings] = useState({ trigger: 'hover' as 'hover' | 'click', bgColor: '#0f172a', textColor: '#ffffff', borderColor: '#334155', borderWidth: '0', borderRadius: '4' });
+  const [headerSettings, setHeaderSettings] = useState({ bgColor: '#f8fafc', textColor: '#334155', fontSize: '13', fontWeight: '500', align: 'left' as 'left' | 'center' | 'right', height: '40' });
+  const [cellSettings, setCellSettings] = useState({ fontSize: '12', padding: '8', textColor: '#334155', align: 'left' as 'left' | 'center' | 'right', lineHeight: '1.5' });
+  const [totalSettings, setTotalSettings] = useState({ position: 'bottom' as 'top' | 'bottom', label: '合计', fontSize: '13', fontWeight: '600', bgColor: '#f8fafc', textColor: '#0f172a' });
+  const [scrollSettings, setScrollSettings] = useState({ x: true, y: true, maxHeight: '400', autoScroll: false, scrollInterval: '3', scrollbarVisible: true });
+  const [funcSettings, setFuncSettings] = useState({ exportExcel: true, drillDown: false, showLegend: true, showDataLabel: false, enableLinkage: false, enableJump: false });
 
   /* ===== 条件样式 ===== */
   const [conditionalConditions, setConditionalConditions] = useState<{ field: string; operator: string; value: string; textColor: string; bgColor: string }[]>([]);
@@ -425,8 +437,8 @@ export default function DashboardConfigPage() {
       metrics: metrics.filter((m) => m.visible !== false).map((m) => m.name),
       x: existing?.x,
       y: existing?.y,
-      w: existing?.w || 1,
-      h: existing?.h || 1,
+      w: existing?.w || 376,
+      h: existing?.h || 280,
     };
   }, [editingChartId, chartName, chartType, selectedDataset, dimensions, metrics, chartList]);
 
@@ -452,7 +464,7 @@ export default function DashboardConfigPage() {
     );
     setShowChart(chart.dimensions.length > 0 && chart.metrics.length > 0);
     setFilterConditions([]);
-    setTitleSettings({ content: chart.name || '', fontSize: '14', fontWeight: '600', color: '#0f172a', align: 'left' });
+    setTitleSettings({ content: chart.name || '', fontSize: '14', fontWeight: '600', color: '#0f172a', align: 'left', visible: true, marginBottom: '12' });
     setChartPalette('#3b82f6');
     setThemeMode('light');
     setActiveConfigTab('data');
@@ -514,15 +526,24 @@ export default function DashboardConfigPage() {
   };
 
   const addChart = () => {
+    const idx = chartList.length;
+    const cols = 3;
+    const cardW = 376;
+    const cardH = 280;
+    const gap = 16;
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
     const newChart: DashboardChart = {
       id: generateId(),
-      name: '新图表 ' + (chartList.length + 1),
+      name: '新图表 ' + (idx + 1),
       type: 'bar',
       datasetName: '订单明细数据集',
       dimensions: [],
       metrics: [],
-      w: 1,
-      h: 1,
+      x: col * (cardW + gap),
+      y: row * (cardH + gap),
+      w: cardW,
+      h: cardH,
     };
     setChartList((prev) => [...prev, newChart]);
     setTimeout(() => selectChart(newChart), 0);
@@ -562,6 +583,59 @@ export default function DashboardConfigPage() {
 
   const editingChart = chartList.find((c) => c.id === editingChartId);
 
+  /* ===== 组件大小/位置：自由画布拖拽 ===== */
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<null | { mode: 'move' | 'resize'; id: string; startX: number; startY: number; startChartX: number; startChartY: number; startW: number; startH: number }>(null);
+  const CANVAS_WIDTH = 1200;
+  const CANVAS_HEIGHT = 800;
+
+  const updateChart = useCallback((id: string, patch: Partial<DashboardChart>) => {
+    setChartList((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  }, []);
+
+  const onDragMove = useCallback((e: MouseEvent) => {
+    const d = dragRef.current;
+    if (!d || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = CANVAS_WIDTH / rect.width;
+    const scaleY = CANVAS_HEIGHT / rect.height;
+    if (d.mode === 'move') {
+      const dx = (e.clientX - d.startX) * scaleX;
+      const dy = (e.clientY - d.startY) * scaleY;
+      const nx = Math.max(0, Math.min(d.startChartX + dx, CANVAS_WIDTH - (d.startW || 200)));
+      const ny = Math.max(0, Math.min(d.startChartY + dy, CANVAS_HEIGHT - (d.startH || 160)));
+      setChartList((prev) => prev.map((c) => (c.id === d.id ? { ...c, x: nx, y: ny } : c)));
+    } else {
+      const dw = (e.clientX - d.startX) * scaleX;
+      const dh = (e.clientY - d.startY) * scaleY;
+      const nw = Math.max(200, d.startW + dw);
+      const nh = Math.max(160, d.startH + dh);
+      setChartList((prev) => prev.map((c) => (c.id === d.id ? { ...c, w: nw, h: nh } : c)));
+    }
+  }, []);
+
+  const onDragEnd = useCallback(() => {
+    dragRef.current = null;
+    document.removeEventListener('mousemove', onDragMove);
+    document.removeEventListener('mouseup', onDragEnd);
+  }, [onDragMove]);
+
+  const startMove = (e: React.MouseEvent, chart: DashboardChart) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { mode: 'move', id: chart.id, startX: e.clientX, startY: e.clientY, startChartX: chart.x || 0, startChartY: chart.y || 0, startW: chart.w || 376, startH: chart.h || 280 };
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragEnd);
+  };
+
+  const startResize = (e: React.MouseEvent, chart: DashboardChart) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { mode: 'resize', id: chart.id, startX: e.clientX, startY: e.clientY, startChartX: chart.x || 0, startChartY: chart.y || 0, startW: chart.w || 376, startH: chart.h || 280 };
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('mouseup', onDragEnd);
+  };
+
   /* ===== 工具栏组件按钮 ===== */
   const toolbarItems = [
     { icon: BarChart3, label: '图表' },
@@ -573,9 +647,6 @@ export default function DashboardConfigPage() {
     { icon: Copy, label: '复用' },
     { icon: Sparkles, label: '智能解读' },
   ];
-
-  /* ===== 画布 grid 布局计算 ===== */
-  const canvasGridCols = 3;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f5f7fa' }}>
@@ -720,17 +791,31 @@ export default function DashboardConfigPage() {
               </button>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${canvasGridCols}, 1fr)`, gap: 14 }}>
+            <div
+              ref={canvasRef}
+              style={{
+                position: 'relative',
+                width: CANVAS_WIDTH,
+                height: CANVAS_HEIGHT,
+                background: '#fff',
+                border: '1px dashed var(--dae-border)',
+                borderRadius: 'var(--dae-radius-lg)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+              }}
+            >
               {chartList.map((chart) => {
                 const isEditing = editingChartId === chart.id;
-                const colSpan = Math.min(chart.w || 1, canvasGridCols);
                 return (
                   <div
                     key={chart.id}
                     onClick={() => selectChart(chart)}
                     className={`de-chart-card ${isEditing ? 'de-chart-selected' : ''}`}
                     style={{
-                      gridColumn: `span ${colSpan}`,
+                      position: 'absolute',
+                      left: chart.x || 0,
+                      top: chart.y || 0,
+                      width: chart.w || 376,
+                      height: chart.h || 280,
                       border: isEditing ? '2px solid var(--dae-primary)' : '1px solid var(--dae-border)',
                       borderRadius: 'var(--dae-radius-lg)',
                       background: '#fff',
@@ -739,10 +824,10 @@ export default function DashboardConfigPage() {
                       overflow: 'hidden',
                       boxShadow: isEditing ? '0 0 0 4px rgba(59,130,246,0.08)' : 'none',
                       cursor: 'pointer',
-                      minHeight: 260,
                     }}
                   >
                     <div
+                      onMouseDown={(e) => startMove(e, chart)}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -750,6 +835,7 @@ export default function DashboardConfigPage() {
                         padding: '10px 12px',
                         borderBottom: '1px solid var(--dae-border)',
                         background: isEditing ? 'rgba(59,130,246,0.04)' : '#fff',
+                        cursor: isEditing ? 'move' : 'pointer',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -763,6 +849,7 @@ export default function DashboardConfigPage() {
                         <button
                           className="dae-icon-action de-chart-delete"
                           onClick={(e) => { e.stopPropagation(); removeChart(chart.id); }}
+                          onMouseDown={(e) => e.stopPropagation()}
                           title="删除"
                           style={{ color: '#ef4444', width: 24, height: 24 }}
                         >
@@ -770,7 +857,7 @@ export default function DashboardConfigPage() {
                         </button>
                       </div>
                     </div>
-                    <div style={{ flex: 1, padding: 14, minHeight: 200 }}>
+                    <div style={{ flex: 1, padding: 14, minHeight: 0 }}>
                       {(() => {
                         const isCurrentEditing = isEditing;
                         const dims = isCurrentEditing ? dimensions : chart.dimensions;
@@ -795,16 +882,33 @@ export default function DashboardConfigPage() {
                             </table>
                           </div>
                         ) : (
-                          <ChartRenderer type={cType} data={cType === 'pie' ? pieSampleData : chartSampleData} yKeys={cType === 'pie' ? undefined : ['value', 'value2']} height={260} />
+                          <ChartRenderer type={cType} data={cType === 'pie' ? pieSampleData : chartSampleData} yKeys={cType === 'pie' ? undefined : ['value', 'value2']} height={Math.max(120, (chart.h || 280) - 90)} />
                         )
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--dae-ink-muted)', gap: 8 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--dae-ink-muted)', gap: 8 }}>
                           <BarChart3 size={32} />
                           <span style={{ fontSize: 13 }}>未配置数据，点击卡片选中后配置</span>
                         </div>
                       );
                       })()}
                     </div>
+                    {isEditing && (
+                      <div
+                        onMouseDown={(e) => startResize(e, chart)}
+                        title="拖动调整大小"
+                        style={{
+                          position: 'absolute',
+                          right: 2,
+                          bottom: 2,
+                          width: 16,
+                          height: 16,
+                          cursor: 'nwse-resize',
+                          borderRadius: '0 0 6px 0',
+                          background:
+                            'linear-gradient(135deg, transparent 50%, var(--dae-primary) 50%, var(--dae-primary) 70%, transparent 70%, transparent 80%, var(--dae-primary) 80%, var(--dae-primary) 90%, transparent 90%)',
+                        }}
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -882,6 +986,59 @@ export default function DashboardConfigPage() {
                             </button>
                           );
                         })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 位置与尺寸 */}
+                  <div className="de-config-section">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <label style={{ fontSize: 12, fontWeight: 600 }}>位置尺寸</label>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 12 }}>X</label>
+                        <input
+                          className="dae-input"
+                          type="number"
+                          min={0}
+                          style={{ fontSize: 13 }}
+                          value={Math.round(editingChart.x || 0)}
+                          onChange={(e) => updateChart(editingChart.id, { x: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                        />
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 12 }}>Y</label>
+                        <input
+                          className="dae-input"
+                          type="number"
+                          min={0}
+                          style={{ fontSize: 13 }}
+                          value={Math.round(editingChart.y || 0)}
+                          onChange={(e) => updateChart(editingChart.id, { y: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                        />
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 12 }}>宽度</label>
+                        <input
+                          className="dae-input"
+                          type="number"
+                          min={200}
+                          style={{ fontSize: 13 }}
+                          value={Math.round(editingChart.w || 376)}
+                          onChange={(e) => updateChart(editingChart.id, { w: Math.max(200, parseInt(e.target.value, 10) || 200) })}
+                        />
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 12 }}>高度</label>
+                        <input
+                          className="dae-input"
+                          type="number"
+                          min={160}
+                          style={{ fontSize: 13 }}
+                          value={Math.round(editingChart.h || 280)}
+                          onChange={(e) => updateChart(editingChart.id, { h: Math.max(160, parseInt(e.target.value, 10) || 160) })}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1014,24 +1171,6 @@ export default function DashboardConfigPage() {
                         <option value="600">10 分钟</option>
                       </select>
                     </div>
-                    <div>
-                      <button
-                        className="dae-btn dae-btn-primary dae-btn-sm"
-                        style={{ flex: 1, width: '100%' }}
-                        onClick={() => { /* 手动刷新 */ }}
-                      >
-                        <RefreshCw size={12} />
-                        立即刷新
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* 操作 */}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="dae-btn dae-btn-primary dae-btn-sm" onClick={handleQuery} disabled={dimensions.length === 0 || metrics.length === 0} style={{ flex: 1 }}>
-                      <Search size={12} />
-                      查询
-                    </button>
                   </div>
                 </div>
               )}
@@ -1078,10 +1217,16 @@ export default function DashboardConfigPage() {
                   </div>
 
                   {/* 标题 */}
-                  <StyleCollapseItem title="标题" enabled={styleSwitches.title} onToggle={(v) => toggleStyle('title')}>
-                    <div className="dae-form-group" style={{ marginBottom: 8 }}>
-                      <label style={{ fontSize: 12 }}>标题内容</label>
-                      <input className="dae-input" style={{ fontSize: 13 }} value={titleSettings.content} onChange={(e) => setTitleSettings((s) => ({ ...s, content: e.target.value }))} placeholder="请输入标题" />
+                  <StyleCollapseItem defaultOpen={true} title="标题" enabled={styleSwitches.title} onToggle={(v) => toggleStyle('title')}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>标题内容</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={titleSettings.content} onChange={(e) => setTitleSettings((s) => ({ ...s, content: e.target.value }))} placeholder="请输入标题" />
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, width: 70 }}>
+                        <label style={{ fontSize: 12 }}>下边距</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={titleSettings.marginBottom} onChange={(e) => setTitleSettings((s) => ({ ...s, marginBottom: e.target.value }))} />
+                      </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                       <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
@@ -1122,18 +1267,52 @@ export default function DashboardConfigPage() {
                   </StyleCollapseItem>
 
                   {/* 背景 */}
-                  <StyleCollapseItem title="背景" enabled={styleSwitches.background} onToggle={(v) => toggleStyle('background')}>
-                    <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                  <StyleCollapseItem defaultOpen={true} title="背景" enabled={styleSwitches.background} onToggle={(v) => toggleStyle('background')}>
+                    <div className="dae-form-group" style={{ marginBottom: 8 }}>
                       <label style={{ fontSize: 12 }}>背景颜色</label>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <input type="color" value={bgSettings.color} onChange={(e) => setBgSettings({ color: e.target.value })} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
-                        <input className="dae-input" value={bgSettings.color} onChange={(e) => setBgSettings({ color: e.target.value })} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                        <input type="color" value={bgSettings.color} onChange={(e) => setBgSettings((s) => ({ ...s, color: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                        <input className="dae-input" value={bgSettings.color} onChange={(e) => setBgSettings((s) => ({ ...s, color: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
                       </div>
                     </div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>内边距</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={bgSettings.padding} onChange={(e) => setBgSettings((s) => ({ ...s, padding: e.target.value }))} />
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>圆角</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={bgSettings.radius} onChange={(e) => setBgSettings((s) => ({ ...s, radius: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="dae-form-group" style={{ marginBottom: 8 }}>
+                      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={bgSettings.gradientEnabled} onChange={(e) => setBgSettings((s) => ({ ...s, gradientEnabled: e.target.checked }))} />
+                        启用渐变色
+                      </label>
+                    </div>
+                    {bgSettings.gradientEnabled && (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                          <label style={{ fontSize: 12 }}>起始色</label>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input type="color" value={bgSettings.gradientFrom} onChange={(e) => setBgSettings((s) => ({ ...s, gradientFrom: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                            <input className="dae-input" value={bgSettings.gradientFrom} onChange={(e) => setBgSettings((s) => ({ ...s, gradientFrom: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                          </div>
+                        </div>
+                        <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                          <label style={{ fontSize: 12 }}>结束色</label>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <input type="color" value={bgSettings.gradientTo} onChange={(e) => setBgSettings((s) => ({ ...s, gradientTo: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                            <input className="dae-input" value={bgSettings.gradientTo} onChange={(e) => setBgSettings((s) => ({ ...s, gradientTo: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </StyleCollapseItem>
 
                   {/* 边框 */}
-                  <StyleCollapseItem title="边框" enabled={styleSwitches.border} onToggle={(v) => toggleStyle('border')}>
+                  <StyleCollapseItem defaultOpen={true} title="边框" enabled={styleSwitches.border} onToggle={(v) => toggleStyle('border')}>
                     <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                       <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
                         <label style={{ fontSize: 12 }}>边框宽度</label>
@@ -1164,7 +1343,7 @@ export default function DashboardConfigPage() {
                   </StyleCollapseItem>
 
                   {/* 提示 */}
-                  <StyleCollapseItem title="提示" enabled={styleSwitches.tooltip} onToggle={(v) => toggleStyle('tooltip')}>
+                  <StyleCollapseItem defaultOpen={true} title="提示" enabled={styleSwitches.tooltip} onToggle={(v) => toggleStyle('tooltip')}>
                     <div className="dae-form-group" style={{ marginBottom: 8 }}>
                       <label style={{ fontSize: 12 }}>触发方式</label>
                       <div style={{ display: 'flex', gap: 4 }}>
@@ -1175,25 +1354,56 @@ export default function DashboardConfigPage() {
                         ))}
                       </div>
                     </div>
-                    <div className="dae-form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ fontSize: 12 }}>背景色</label>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <input type="color" value={tooltipSettings.bgColor} onChange={(e) => setTooltipSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
-                        <input className="dae-input" value={tooltipSettings.bgColor} onChange={(e) => setTooltipSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>背景色</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input type="color" value={tooltipSettings.bgColor} onChange={(e) => setTooltipSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                          <input className="dae-input" value={tooltipSettings.bgColor} onChange={(e) => setTooltipSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                        </div>
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>文字颜色</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input type="color" value={tooltipSettings.textColor} onChange={(e) => setTooltipSettings((s) => ({ ...s, textColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                          <input className="dae-input" value={tooltipSettings.textColor} onChange={(e) => setTooltipSettings((s) => ({ ...s, textColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>边框颜色</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input type="color" value={tooltipSettings.borderColor} onChange={(e) => setTooltipSettings((s) => ({ ...s, borderColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                          <input className="dae-input" value={tooltipSettings.borderColor} onChange={(e) => setTooltipSettings((s) => ({ ...s, borderColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                        </div>
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>圆角</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={tooltipSettings.borderRadius} onChange={(e) => setTooltipSettings((s) => ({ ...s, borderRadius: e.target.value }))} />
                       </div>
                     </div>
                   </StyleCollapseItem>
 
                   {/* 表头 */}
-                  <StyleCollapseItem title="表头" enabled={styleSwitches.tableHeader} onToggle={(v) => toggleStyle('tableHeader')}>
-                    <div className="dae-form-group" style={{ marginBottom: 8 }}>
-                      <label style={{ fontSize: 12 }}>背景色</label>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <input type="color" value={headerSettings.bgColor} onChange={(e) => setHeaderSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
-                        <input className="dae-input" value={headerSettings.bgColor} onChange={(e) => setHeaderSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                  <StyleCollapseItem defaultOpen={true} title="表头" enabled={styleSwitches.tableHeader} onToggle={(v) => toggleStyle('tableHeader')}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>背景色</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input type="color" value={headerSettings.bgColor} onChange={(e) => setHeaderSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                          <input className="dae-input" value={headerSettings.bgColor} onChange={(e) => setHeaderSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                        </div>
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>文字颜色</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input type="color" value={headerSettings.textColor} onChange={(e) => setHeaderSettings((s) => ({ ...s, textColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                          <input className="dae-input" value={headerSettings.textColor} onChange={(e) => setHeaderSettings((s) => ({ ...s, textColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                       <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
                         <label style={{ fontSize: 12 }}>字体大小</label>
                         <select className="dae-input" style={{ fontSize: 13 }} value={headerSettings.fontSize} onChange={(e) => setHeaderSettings((s) => ({ ...s, fontSize: e.target.value }))}>
@@ -1209,11 +1419,27 @@ export default function DashboardConfigPage() {
                         </select>
                       </div>
                     </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>对齐</label>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {(['left', 'center', 'right'] as const).map((a) => (
+                            <button key={a} className={`de-mid-chart-btn ${headerSettings.align === a ? 'active' : ''}`} style={{ flex: 1, height: 28, fontSize: 12 }} onClick={() => setHeaderSettings((s) => ({ ...s, align: a }))}>
+                              {a === 'left' ? '左' : a === 'center' ? '中' : '右'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>行高</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={headerSettings.height} onChange={(e) => setHeaderSettings((s) => ({ ...s, height: e.target.value }))} />
+                      </div>
+                    </div>
                   </StyleCollapseItem>
 
                   {/* 单元格 */}
-                  <StyleCollapseItem title="单元格" enabled={styleSwitches.cell} onToggle={(v) => toggleStyle('cell')}>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                  <StyleCollapseItem defaultOpen={true} title="单元格" enabled={styleSwitches.cell} onToggle={(v) => toggleStyle('cell')}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                       <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
                         <label style={{ fontSize: 12 }}>字体大小</label>
                         <select className="dae-input" style={{ fontSize: 13 }} value={cellSettings.fontSize} onChange={(e) => setCellSettings((s) => ({ ...s, fontSize: e.target.value }))}>
@@ -1225,10 +1451,33 @@ export default function DashboardConfigPage() {
                         <input className="dae-input" style={{ fontSize: 13 }} value={cellSettings.padding} onChange={(e) => setCellSettings((s) => ({ ...s, padding: e.target.value }))} />
                       </div>
                     </div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>文字颜色</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input type="color" value={cellSettings.textColor} onChange={(e) => setCellSettings((s) => ({ ...s, textColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                          <input className="dae-input" value={cellSettings.textColor} onChange={(e) => setCellSettings((s) => ({ ...s, textColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                        </div>
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>行高</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={cellSettings.lineHeight} onChange={(e) => setCellSettings((s) => ({ ...s, lineHeight: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="dae-form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 12 }}>对齐</label>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {(['left', 'center', 'right'] as const).map((a) => (
+                          <button key={a} className={`de-mid-chart-btn ${cellSettings.align === a ? 'active' : ''}`} style={{ flex: 1, height: 28, fontSize: 12 }} onClick={() => setCellSettings((s) => ({ ...s, align: a }))}>
+                            {a === 'left' ? '左' : a === 'center' ? '中' : '右'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </StyleCollapseItem>
 
                   {/* 总计 */}
-                  <StyleCollapseItem title="总计" enabled={styleSwitches.total} onToggle={(v) => toggleStyle('total')}>
+                  <StyleCollapseItem defaultOpen={true} title="总计" enabled={styleSwitches.total} onToggle={(v) => toggleStyle('total')}>
                     <div className="dae-form-group" style={{ marginBottom: 8 }}>
                       <label style={{ fontSize: 12 }}>位置</label>
                       <div style={{ display: 'flex', gap: 4 }}>
@@ -1239,37 +1488,88 @@ export default function DashboardConfigPage() {
                         ))}
                       </div>
                     </div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>标签</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={totalSettings.label} onChange={(e) => setTotalSettings((s) => ({ ...s, label: e.target.value }))} />
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>字体大小</label>
+                        <select className="dae-input" style={{ fontSize: 13 }} value={totalSettings.fontSize} onChange={(e) => setTotalSettings((s) => ({ ...s, fontSize: e.target.value }))}>
+                          {['12', '13', '14', '15', '16'].map((s) => (<option key={s} value={s}>{s}px</option>))}
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>字重</label>
+                        <select className="dae-input" style={{ fontSize: 13 }} value={totalSettings.fontWeight} onChange={(e) => setTotalSettings((s) => ({ ...s, fontWeight: e.target.value }))}>
+                          <option value="400">常规</option>
+                          <option value="500">中等</option>
+                          <option value="600">半粗</option>
+                          <option value="700">粗体</option>
+                        </select>
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>背景色</label>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <input type="color" value={totalSettings.bgColor} onChange={(e) => setTotalSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                          <input className="dae-input" value={totalSettings.bgColor} onChange={(e) => setTotalSettings((s) => ({ ...s, bgColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                        </div>
+                      </div>
+                    </div>
                     <div className="dae-form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ fontSize: 12 }}>标签</label>
-                      <input className="dae-input" style={{ fontSize: 13 }} value={totalSettings.label} onChange={(e) => setTotalSettings((s) => ({ ...s, label: e.target.value }))} />
+                      <label style={{ fontSize: 12 }}>文字颜色</label>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input type="color" value={totalSettings.textColor} onChange={(e) => setTotalSettings((s) => ({ ...s, textColor: e.target.value }))} style={{ width: 28, height: 28, border: '1px solid var(--dae-border)', borderRadius: 4, padding: 2, cursor: 'pointer' }} />
+                        <input className="dae-input" value={totalSettings.textColor} onChange={(e) => setTotalSettings((s) => ({ ...s, textColor: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }} />
+                      </div>
                     </div>
                   </StyleCollapseItem>
 
                   {/* 功能设置 */}
-                  <StyleCollapseItem title="功能设置" enabled={styleSwitches.funcSettings} onToggle={(v) => toggleStyle('funcSettings')}>
+                  <StyleCollapseItem defaultOpen={true} title="功能设置" enabled={styleSwitches.funcSettings} onToggle={(v) => toggleStyle('funcSettings')}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                        <input type="checkbox" />
+                        <input type="checkbox" checked={funcSettings.exportExcel} onChange={(e) => setFuncSettings((s) => ({ ...s, exportExcel: e.target.checked }))} />
                         支持导出 Excel
                       </label>
                       <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                        <input type="checkbox" />
+                        <input type="checkbox" checked={funcSettings.drillDown} onChange={(e) => setFuncSettings((s) => ({ ...s, drillDown: e.target.checked }))} />
                         支持数据下钻
                       </label>
                       <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                        <input type="checkbox" />
+                        <input type="checkbox" checked={funcSettings.showLegend} onChange={(e) => setFuncSettings((s) => ({ ...s, showLegend: e.target.checked }))} />
                         显示图例
+                      </label>
+                      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={funcSettings.showDataLabel} onChange={(e) => setFuncSettings((s) => ({ ...s, showDataLabel: e.target.checked }))} />
+                        显示数据标签
+                      </label>
+                      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={funcSettings.enableLinkage} onChange={(e) => setFuncSettings((s) => ({ ...s, enableLinkage: e.target.checked }))} />
+                        开启图表联动
+                      </label>
+                      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={funcSettings.enableJump} onChange={(e) => setFuncSettings((s) => ({ ...s, enableJump: e.target.checked }))} />
+                        开启跳转
                       </label>
                     </div>
                   </StyleCollapseItem>
 
                   {/* 滚动设置 */}
-                  <StyleCollapseItem title="滚动设置" enabled={styleSwitches.scroll} onToggle={(v) => toggleStyle('scroll')}>
-                    <div className="dae-form-group" style={{ marginBottom: 8 }}>
-                      <label style={{ fontSize: 12 }}>最大高度</label>
-                      <input className="dae-input" style={{ fontSize: 13 }} value={scrollSettings.maxHeight} onChange={(e) => setScrollSettings((s) => ({ ...s, maxHeight: e.target.value }))} />
+                  <StyleCollapseItem defaultOpen={true} title="滚动设置" enabled={styleSwitches.scroll} onToggle={(v) => toggleStyle('scroll')}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>最大高度</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={scrollSettings.maxHeight} onChange={(e) => setScrollSettings((s) => ({ ...s, maxHeight: e.target.value }))} />
+                      </div>
+                      <div className="dae-form-group" style={{ marginBottom: 0, flex: 1 }}>
+                        <label style={{ fontSize: 12 }}>滚动间隔（秒）</label>
+                        <input className="dae-input" style={{ fontSize: 13 }} value={scrollSettings.scrollInterval} onChange={(e) => setScrollSettings((s) => ({ ...s, scrollInterval: e.target.value }))} disabled={!scrollSettings.autoScroll} />
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
                         <input type="checkbox" checked={scrollSettings.x} onChange={(e) => setScrollSettings((s) => ({ ...s, x: e.target.checked }))} />
                         横向滚动
@@ -1278,11 +1578,19 @@ export default function DashboardConfigPage() {
                         <input type="checkbox" checked={scrollSettings.y} onChange={(e) => setScrollSettings((s) => ({ ...s, y: e.target.checked }))} />
                         纵向滚动
                       </label>
+                      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={scrollSettings.autoScroll} onChange={(e) => setScrollSettings((s) => ({ ...s, autoScroll: e.target.checked }))} />
+                        自动轮播滚动
+                      </label>
+                      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={scrollSettings.scrollbarVisible} onChange={(e) => setScrollSettings((s) => ({ ...s, scrollbarVisible: e.target.checked }))} />
+                        显示滚动条
+                      </label>
                     </div>
                   </StyleCollapseItem>
 
                   {/* 条件样式 */}
-                  <StyleCollapseItem title="条件样式" enabled={styleSwitches.conditional} onToggle={(v) => toggleStyle('conditional')}>
+                  <StyleCollapseItem defaultOpen={true} title="条件样式" enabled={styleSwitches.conditional} onToggle={(v) => toggleStyle('conditional')}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <span style={{ fontSize: 12, color: 'var(--dae-ink-muted)' }}>已配置 {conditionalConditions.length} 条规则</span>
                       <button className="dae-btn dae-btn-secondary dae-btn-sm" onClick={() => setConditionalModalOpen(true)}>
@@ -1394,42 +1702,21 @@ export default function DashboardConfigPage() {
 
             {/* 底部操作按钮 */}
             {editingChartId && (
-              <div style={{ padding: '12px 14px', borderTop: '1px solid var(--dae-border)', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fff' }}>
+              <div style={{ padding: '12px 14px', borderTop: '1px solid var(--dae-border)', display: 'flex', gap: 8, background: '#fff' }}>
                 <button
-                  onClick={deselectChart}
-                  style={{
-                    padding: '6px 16px',
-                    fontSize: 14,
-                    fontWeight: 500,
-                    color: 'var(--dae-ink)',
-                    background: '#fff',
-                    border: '1px solid #d9d9d9',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                  }}
-                >
-                  取消
-                </button>
-                <button
+                  className="dae-btn dae-btn-primary dae-btn-sm"
+                  style={{ flex: 1, justifyContent: 'center' }}
                   onClick={() => {
                     const packed = packChart();
                     if (packed) {
                       setChartList((prev) => prev.map((c) => (c.id === editingChartId ? packed : c)));
                     }
-                    deselectChart();
+                    handleQuery();
                   }}
-                  style={{
-                    padding: '6px 16px',
-                    fontSize: 14,
-                    fontWeight: 500,
-                    color: '#fff',
-                    background: 'var(--dae-primary)',
-                    border: '1px solid var(--dae-primary)',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                  }}
+                  disabled={dimensions.length === 0 || metrics.length === 0}
                 >
-                  保存
+                  <RefreshCw size={14} />
+                  数据更新
                 </button>
               </div>
             )}

@@ -20,6 +20,8 @@ import DashboardPage from './pages/DashboardPage';
 import DashboardConfigPage from './pages/dashboard/config';
 import DashboardPreviewPage from './pages/dashboard/preview';
 import DataScreenPage from './pages/DataScreenPage';
+import DataScreenConfigPage from './pages/data-screen/config';
+import DataScreenPreviewPage from './pages/data-screen/preview';
 import UserManagePage from './pages/UserManagePage';
 import RoleManagePage from './pages/RoleManagePage';
 import OperationLogPage from './pages/OperationLogPage';
@@ -45,6 +47,8 @@ const pageMap: Record<string, React.ComponentType> = {
   'dashboard-config': DashboardConfigPage,
   'dashboard-preview': DashboardPreviewPage,
   'data-screen': DataScreenPage,
+  'data-screen-config': DataScreenConfigPage,
+  'data-screen-preview': DataScreenPreviewPage,
   'user-manage': UserManagePage,
   'role-manage': RoleManagePage,
   'operation-log': OperationLogPage,
@@ -68,6 +72,8 @@ const route = defineHashPageRoute(
     { id: 'dashboard-config', title: '仪表盘配置' },
     { id: 'dashboard-preview', title: '仪表盘预览' },
     { id: 'data-screen', title: '数据大屏' },
+    { id: 'data-screen-config', title: '数据大屏配置' },
+    { id: 'data-screen-preview', title: '数据大屏预览' },
     { id: 'user-manage', title: '用户管理' },
     { id: 'role-manage', title: '角色管理' },
     { id: 'metrics', title: '指标监控' },
@@ -89,10 +95,16 @@ export default function DataAnalysisEngine() {
     ? 'report'
     : activePage.startsWith('dashboard-')
     ? 'dashboard'
+    : activePage.startsWith('data-screen-')
+    ? 'data-screen'
     : activePage;
 
-  // 仪表盘配置/预览页为全屏二级页面，去掉侧边导航和主布局边距
-  const isFullScreenPage = activePage === 'dashboard-config' || activePage === 'dashboard-preview';
+  // 仪表盘配置/预览页、数据大屏配置/预览页为全屏二级页面，去掉侧边导航和主布局边距
+  const isFullScreenPage =
+    activePage === 'dashboard-config' ||
+    activePage === 'dashboard-preview' ||
+    activePage === 'data-screen-config' ||
+    activePage === 'data-screen-preview';
 
   if (isFullScreenPage) {
     return (

@@ -48,28 +48,44 @@ export default function DashboardPreviewPage() {
             <p>该仪表盘暂无图表</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+          <div
+            style={{
+              position: 'relative',
+              width: 1200,
+              height: 800,
+              background: '#fff',
+              border: '1px solid var(--dae-border)',
+              borderRadius: 'var(--dae-radius-lg)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+            }}
+          >
             {charts.map((chart) => (
               <div
                 key={chart.id}
                 style={{
+                  position: 'absolute',
+                  left: chart.x || 0,
+                  top: chart.y || 0,
+                  width: chart.w || 376,
+                  height: chart.h || 280,
                   border: '1px solid var(--dae-border)',
                   borderRadius: 'var(--dae-radius-lg)',
                   background: '#fff',
                   padding: 16,
                   display: 'flex',
                   flexDirection: 'column',
+                  overflow: 'hidden',
                 }}
               >
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 12 }}>
                   {chart.name}
                 </div>
-                <div style={{ flex: 1, minHeight: 260 }}>
+                <div style={{ flex: 1, minHeight: 0 }}>
                   <ChartRenderer
                     type={chart.type === 'table' ? 'bar' : chart.type}
                     data={chart.type === 'pie' ? pieSampleData : chartSampleData}
                     yKeys={chart.type === 'pie' ? undefined : ['value', 'value2']}
-                    height={280}
+                    height={Math.max(120, (chart.h || 280) - 90)}
                   />
                 </div>
               </div>

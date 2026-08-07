@@ -831,3 +831,35 @@
 .de-toggle.on::after {
   transform: translateX(14px);
 }
+
+/* Data screen editor tabs */
+.de-screen-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--dae-ink-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.de-screen-tab:hover {
+  color: var(--dae-ink-secondary);
+}
+.de-screen-tab.active {
+  color: var(--dae-primary);
+  border-bottom-color: var(--dae-primary);
+  background: var(--dae-primary-light);
+}
+
+/* Data screen component library button */
+.de-screen-comp-btn {
+  transition: all 0.12s;
+}
+.de-screen-comp-btn:hover {
+  border-color: var(--dae-primary) !important;
+  box-shadow: 0 0 0 2px var(--dae-primary-light);
+}
+.de-screen-comp-btn:active {
+  transform: translateY(1px);
+}

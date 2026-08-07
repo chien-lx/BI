@@ -31,6 +31,8 @@ export type PageId =
   | 'report'
   | 'dashboard'
   | 'data-screen'
+  | 'data-screen-config'
+  | 'data-screen-preview'
   | 'user-manage'
   | 'role-manage'
   | 'operation-log'

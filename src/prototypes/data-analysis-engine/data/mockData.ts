@@ -464,23 +464,295 @@ export const dataScreens: DataScreenItem[] = [
 ];
 
 // ==================== 用户管理 ====================
+export interface UserDataPermission {
+  view: boolean;
+  manage: boolean;
+}
+
+export interface UserDataPermissions {
+  datasource: UserDataPermission;
+  dataset: UserDataPermission;
+  chart: UserDataPermission;
+  report: UserDataPermission;
+  dashboard: UserDataPermission;
+  datascreen: UserDataPermission;
+}
+
+export interface MenuPermission {
+  id: string;
+  name: string;
+  icon?: string;
+  permissions: ('view' | 'manage')[];
+}
+
+export type ResourcePermissionType = 'datasource' | 'dataset' | 'chart' | 'report' | 'dashboard' | 'datascreen';
+
+export interface ResourcePermission {
+  resourceType: ResourcePermissionType;
+  resourceId: string;
+  resourceName: string;
+  view: boolean;
+  manage: boolean;
+}
+
+export interface TenantMembership {
+  tenantId: string;
+  /** 用户在当前租户下的角色：admin=租户管理员，member=普通成员 */
+  role: 'admin' | 'member';
+}
+
 export interface UserItem {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: string;
+  roleId: string;
   department: string;
+  position?: string;
   status: 'active' | 'inactive';
   createdAt: string;
+  updatedAt?: string;
+  lastLoginAt?: string;
+  menuPermissions?: MenuPermission[];
+  dataPermissions?: UserDataPermissions;
+  resourcePermissions?: ResourcePermission[];
+  /** 用户所属的租户空间列表（支持一个用户存在于多个租户） */
+  tenantMemberships?: TenantMembership[];
+  /** 是否为系统超级管理员（平台级，可进入租户管理） */
+  isSuperAdmin?: boolean;
+}
+
+const defaultDataPermissions: UserDataPermissions = {
+  datasource: { view: false, manage: false },
+  dataset: { view: false, manage: false },
+  chart: { view: false, manage: false },
+  report: { view: false, manage: false },
+  dashboard: { view: false, manage: false },
+  datascreen: { view: false, manage: false },
+};
+
+export const resourcePermissionGroups: { key: ResourcePermissionType; label: string; items: { id: string; name: string }[] }[] = [
+  { key: 'datasource', label: '数据源', items: dataSources.slice(0, 5).map((d) => ({ id: d.id, name: d.name })) },
+  { key: 'dataset', label: '数据集', items: datasets.slice(0, 5).map((d) => ({ id: d.id, name: d.name })) },
+  { key: 'chart', label: '图表', items: charts.slice(0, 5).map((d) => ({ id: d.id, name: d.name })) },
+  { key: 'report', label: '报表', items: reports.slice(0, 5).map((d) => ({ id: d.id, name: d.name })) },
+  { key: 'dashboard', label: '仪表盘', items: dashboards.slice(0, 5).map((d) => ({ id: d.id, name: d.name })) },
+  { key: 'datascreen', label: '数据大屏', items: dataScreens.slice(0, 5).map((d) => ({ id: d.id, name: d.name })) },
+];
+
+function buildResourcePermissions(roleId: string): ResourcePermission[] {
+  const perms: ResourcePermission[] = [];
+  resourcePermissionGroups.forEach((group) => {
+    group.items.forEach((item, idx) => {
+      let view = false;
+      let manage = false;
+      if (roleId === 'R001') {
+        view = true;
+        manage = true;
+      } else if (roleId === 'R002') {
+        if (['dataset', 'chart', 'report', 'dashboard'].includes(group.key)) {
+          view = true;
+          manage = idx % 2 === 1;
+        } else if (['datasource', 'datascreen'].includes(group.key)) {
+          view = true;
+        }
+      } else if (roleId === 'R003') {
+        if (['report', 'dashboard', 'datascreen'].includes(group.key)) {
+          view = true;
+          manage = group.key === 'dashboard' && idx === 1;
+        }
+      }
+      perms.push({ resourceType: group.key, resourceId: item.id, resourceName: item.name, view, manage });
+    });
+  });
+  return perms;
 }
 
 export const users: UserItem[] = [
-  { id: 'U001', name: '张三', email: 'zhangsan@company.com', role: '管理员', department: '技术部', status: 'active', createdAt: '2026-01-10' },
-  { id: 'U002', name: '李四', email: 'lisi@company.com', role: '数据分析师', department: '数据部', status: 'active', createdAt: '2026-01-15' },
-  { id: 'U003', name: '王五', email: 'wangwu@company.com', role: '数据分析师', department: '数据部', status: 'active', createdAt: '2026-02-01' },
-  { id: 'U004', name: '赵六', email: 'zhaoliu@company.com', role: '业务人员', department: '运营部', status: 'active', createdAt: '2026-02-20' },
-  { id: 'U005', name: '孙七', email: 'sunqi@company.com', role: '业务人员', department: '市场部', status: 'inactive', createdAt: '2026-03-10' },
+  {
+    id: 'U001',
+    name: '张三',
+    email: 'zhangsan@company.com',
+    phone: '13800138001',
+    role: '系统管理员',
+    roleId: 'R001',
+    department: '技术部',
+    position: '技术总监',
+    status: 'active',
+    createdAt: '2026-01-10',
+    updatedAt: '2026-06-10',
+    lastLoginAt: '2026-08-11 09:30',
+    tenantMemberships: [
+      { tenantId: 'T001', role: 'admin' },
+      { tenantId: 'T002', role: 'member' },
+    ],
+    isSuperAdmin: true,
+    menuPermissions: [
+      { id: 'data-portal', name: '数据门户', permissions: ['view', 'manage'] },
+      { id: 'datasource', name: '数据源', permissions: ['view', 'manage'] },
+      { id: 'dataset', name: '数据集', permissions: ['view', 'manage'] },
+      { id: 'self-service', name: '自助取数', permissions: ['view', 'manage'] },
+      { id: 'chart', name: '图表管理', permissions: ['view', 'manage'] },
+      { id: 'report', name: '报表', permissions: ['view', 'manage'] },
+      { id: 'dashboard', name: '仪表盘', permissions: ['view', 'manage'] },
+      { id: 'data-screen', name: '数据大屏', permissions: ['view', 'manage'] },
+      { id: 'user-manage', name: '用户管理', permissions: ['view', 'manage'] },
+      { id: 'role-manage', name: '角色管理', permissions: ['view', 'manage'] },
+      { id: 'operation-log', name: '操作日志', permissions: ['view', 'manage'] },
+      { id: 'tenant-manage', name: '租户管理', permissions: ['view', 'manage'] },
+      { id: 'metric-monitor', name: '指标监控', permissions: ['view', 'manage'] },
+    ],
+    dataPermissions: {
+      datasource: { view: true, manage: true },
+      dataset: { view: true, manage: true },
+      chart: { view: true, manage: true },
+      report: { view: true, manage: true },
+      dashboard: { view: true, manage: true },
+      datascreen: { view: true, manage: true },
+    },
+    resourcePermissions: buildResourcePermissions('R001'),
+  },
+  {
+    id: 'U002',
+    name: '李四',
+    email: 'lisi@company.com',
+    phone: '13800138002',
+    role: '数据分析师',
+    roleId: 'R002',
+    department: '数据部',
+    position: '高级数据分析师',
+    status: 'active',
+    createdAt: '2026-01-15',
+    updatedAt: '2026-06-08',
+    lastLoginAt: '2026-08-10 18:20',
+    tenantMemberships: [
+      { tenantId: 'T002', role: 'admin' },
+      { tenantId: 'T003', role: 'member' },
+    ],
+    menuPermissions: [
+      { id: 'data-portal', name: '数据门户', permissions: ['view'] },
+      { id: 'datasource', name: '数据源', permissions: ['view'] },
+      { id: 'dataset', name: '数据集', permissions: ['view', 'manage'] },
+      { id: 'self-service', name: '自助取数', permissions: ['view', 'manage'] },
+      { id: 'chart', name: '图表管理', permissions: ['view', 'manage'] },
+      { id: 'report', name: '报表', permissions: ['view', 'manage'] },
+      { id: 'dashboard', name: '仪表盘', permissions: ['view', 'manage'] },
+      { id: 'data-screen', name: '数据大屏', permissions: ['view'] },
+    ],
+    dataPermissions: {
+      datasource: { view: true, manage: false },
+      dataset: { view: true, manage: true },
+      chart: { view: true, manage: true },
+      report: { view: true, manage: true },
+      dashboard: { view: true, manage: true },
+      datascreen: { view: true, manage: false },
+    },
+    resourcePermissions: buildResourcePermissions('R002'),
+  },
+  {
+    id: 'U003',
+    name: '王五',
+    email: 'wangwu@company.com',
+    phone: '13800138003',
+    role: '数据分析师',
+    roleId: 'R002',
+    department: '数据部',
+    position: '数据分析师',
+    status: 'active',
+    createdAt: '2026-02-01',
+    updatedAt: '2026-05-22',
+    lastLoginAt: '2026-08-11 08:45',
+    tenantMemberships: [
+      { tenantId: 'T003', role: 'admin' },
+    ],
+    menuPermissions: [
+      { id: 'data-portal', name: '数据门户', permissions: ['view'] },
+      { id: 'datasource', name: '数据源', permissions: ['view'] },
+      { id: 'dataset', name: '数据集', permissions: ['view', 'manage'] },
+      { id: 'self-service', name: '自助取数', permissions: ['view'] },
+      { id: 'chart', name: '图表管理', permissions: ['view', 'manage'] },
+      { id: 'report', name: '报表', permissions: ['view'] },
+      { id: 'dashboard', name: '仪表盘', permissions: ['view', 'manage'] },
+      { id: 'data-screen', name: '数据大屏', permissions: ['view'] },
+    ],
+    dataPermissions: {
+      datasource: { view: true, manage: false },
+      dataset: { view: true, manage: true },
+      chart: { view: true, manage: true },
+      report: { view: true, manage: false },
+      dashboard: { view: true, manage: true },
+      datascreen: { view: true, manage: false },
+    },
+    resourcePermissions: buildResourcePermissions('R002'),
+  },
+  {
+    id: 'U004',
+    name: '赵六',
+    email: 'zhaoliu@company.com',
+    phone: '13800138004',
+    role: '业务人员',
+    roleId: 'R003',
+    department: '运营部',
+    position: '运营专员',
+    status: 'active',
+    createdAt: '2026-02-20',
+    updatedAt: '2026-06-05',
+    lastLoginAt: '2026-08-09 17:10',
+    tenantMemberships: [
+      { tenantId: 'T004', role: 'admin' },
+      { tenantId: 'T001', role: 'member' },
+    ],
+    menuPermissions: [
+      { id: 'data-portal', name: '数据门户', permissions: ['view'] },
+      { id: 'dashboard', name: '仪表盘', permissions: ['view'] },
+      { id: 'report', name: '报表', permissions: ['view'] },
+      { id: 'data-screen', name: '数据大屏', permissions: ['view'] },
+    ],
+    dataPermissions: {
+      datasource: { view: false, manage: false },
+      dataset: { view: false, manage: false },
+      chart: { view: false, manage: false },
+      report: { view: true, manage: false },
+      dashboard: { view: true, manage: false },
+      datascreen: { view: true, manage: false },
+    },
+    resourcePermissions: buildResourcePermissions('R003'),
+  },
+  {
+    id: 'U005',
+    name: '孙七',
+    email: 'sunqi@company.com',
+    phone: '13800138005',
+    role: '业务人员',
+    roleId: 'R003',
+    department: '市场部',
+    position: '市场专员',
+    status: 'inactive',
+    createdAt: '2026-03-10',
+    updatedAt: '2026-07-28',
+    lastLoginAt: '2026-07-20 16:00',
+    tenantMemberships: [
+      { tenantId: 'T001', role: 'member' },
+    ],
+    menuPermissions: [
+      { id: 'data-portal', name: '数据门户', permissions: ['view'] },
+      { id: 'dashboard', name: '仪表盘', permissions: ['view'] },
+      { id: 'report', name: '报表', permissions: ['view'] },
+    ],
+    dataPermissions: {
+      datasource: { view: false, manage: false },
+      dataset: { view: false, manage: false },
+      chart: { view: false, manage: false },
+      report: { view: true, manage: false },
+      dashboard: { view: true, manage: false },
+      datascreen: { view: false, manage: false },
+    },
+    resourcePermissions: buildResourcePermissions('R003'),
+  },
 ];
+
+export const defaultUserDataPermissions = defaultDataPermissions;
 
 // ==================== 角色管理 ====================
 export interface RoleItem {
@@ -489,35 +761,325 @@ export interface RoleItem {
   description: string;
   userCount: number;
   permissions: string[];
+  status: 'active' | 'inactive';
+  menuPermissions?: MenuPermission[];
 }
 
 export const roles: RoleItem[] = [
-  { id: 'R001', name: '系统管理员', description: '拥有所有模块的管理权限', userCount: 2, permissions: ['全部权限'] },
-  { id: 'R002', name: '数据分析师', description: '可创建数据集、图表和仪表盘', userCount: 3, permissions: ['数据准备', '数据分析'] },
-  { id: 'R003', name: '业务人员', description: '可查看已发布的数据资产', userCount: 8, permissions: ['数据门户'] },
-  { id: 'R004', name: '访客', description: '仅查看权限，不可操作', userCount: 5, permissions: ['数据门户(只读)'] },
+  {
+    id: 'R001',
+    name: '系统管理员',
+    description: '拥有所有模块的管理权限',
+    userCount: 2,
+    permissions: ['全部权限'],
+    status: 'active',
+    menuPermissions: [
+      { id: 'data-portal', name: '数据门户', permissions: ['view', 'manage'] },
+      { id: 'datasource', name: '数据源', permissions: ['view', 'manage'] },
+      { id: 'dataset', name: '数据集', permissions: ['view', 'manage'] },
+      { id: 'self-service', name: '自助取数', permissions: ['view', 'manage'] },
+      { id: 'chart', name: '图表管理', permissions: ['view', 'manage'] },
+      { id: 'report', name: '报表', permissions: ['view', 'manage'] },
+      { id: 'dashboard', name: '仪表盘', permissions: ['view', 'manage'] },
+      { id: 'data-screen', name: '数据大屏', permissions: ['view', 'manage'] },
+      { id: 'user-manage', name: '用户管理', permissions: ['view', 'manage'] },
+      { id: 'role-manage', name: '角色管理', permissions: ['view', 'manage'] },
+      { id: 'operation-log', name: '操作日志', permissions: ['view', 'manage'] },
+      { id: 'tenant-manage', name: '租户管理', permissions: ['view', 'manage'] },
+      { id: 'metric-monitor', name: '指标监控', permissions: ['view', 'manage'] },
+    ],
+  },
+  {
+    id: 'R002',
+    name: '数据分析师',
+    description: '可创建数据集、图表和仪表盘',
+    userCount: 3,
+    permissions: ['数据准备', '数据分析'],
+    status: 'active',
+    menuPermissions: [
+      { id: 'data-portal', name: '数据门户', permissions: ['view'] },
+      { id: 'datasource', name: '数据源', permissions: ['view'] },
+      { id: 'dataset', name: '数据集', permissions: ['view', 'manage'] },
+      { id: 'self-service', name: '自助取数', permissions: ['view', 'manage'] },
+      { id: 'chart', name: '图表管理', permissions: ['view', 'manage'] },
+      { id: 'report', name: '报表', permissions: ['view', 'manage'] },
+      { id: 'dashboard', name: '仪表盘', permissions: ['view', 'manage'] },
+      { id: 'data-screen', name: '数据大屏', permissions: ['view'] },
+    ],
+  },
+  {
+    id: 'R003',
+    name: '业务人员',
+    description: '可查看已发布的数据资产',
+    userCount: 8,
+    permissions: ['数据门户'],
+    status: 'active',
+    menuPermissions: [
+      { id: 'data-portal', name: '数据门户', permissions: ['view'] },
+      { id: 'report', name: '报表', permissions: ['view'] },
+      { id: 'dashboard', name: '仪表盘', permissions: ['view'] },
+      { id: 'data-screen', name: '数据大屏', permissions: ['view'] },
+    ],
+  },
+  {
+    id: 'R004',
+    name: '访客',
+    description: '仅查看权限，不可操作',
+    userCount: 5,
+    permissions: ['数据门户(只读)'],
+    status: 'inactive',
+    menuPermissions: [
+      { id: 'data-portal', name: '数据门户', permissions: ['view'] },
+    ],
+  },
 ];
 
+// ==================== 菜单树（用于权限配置） ====================
+export interface MenuTreeItem {
+  id: string;
+  label: string;
+}
+
+export interface MenuTreeGroup {
+  label: string;
+  items: MenuTreeItem[];
+}
+
+export const menuTree: MenuTreeGroup[] = [
+  {
+    label: '数据门户',
+    items: [{ id: 'data-portal', label: '数据门户' }],
+  },
+  {
+    label: '数据准备',
+    items: [
+      { id: 'datasource', label: '数据源' },
+      { id: 'dataset', label: '数据集' },
+      { id: 'self-service', label: '自助取数' },
+    ],
+  },
+  {
+    label: '数据分析',
+    items: [
+      { id: 'data-explore', label: '数据探查' },
+      { id: 'chart', label: '图表管理' },
+      { id: 'report', label: '报表' },
+      { id: 'dashboard', label: '仪表盘' },
+      { id: 'data-screen', label: '数据大屏' },
+    ],
+  },
+  {
+    label: '系统管理',
+    items: [
+      { id: 'user-manage', label: '用户管理' },
+      { id: 'role-manage', label: '角色管理' },
+      { id: 'operation-log', label: '操作日志' },
+      { id: 'tenant-manage', label: '租户管理' },
+    ],
+  },
+  {
+    label: '监控告警',
+    items: [{ id: 'metric-monitor', label: '指标监控' }],
+  },
+];
+
+/** 菜单与数据资源类型的映射；没有对应资源的菜单为 null */
+export const menuToResourceType: Record<string, ResourcePermissionType | null> = {
+  datasource: 'datasource',
+  dataset: 'dataset',
+  chart: 'chart',
+  report: 'report',
+  dashboard: 'dashboard',
+  'data-screen': 'datascreen',
+};
+
 // ==================== 操作日志 ====================
+export type OperationActionType = 'create' | 'update' | 'delete' | 'publish' | 'download' | 'export' | 'login' | 'other';
+
 export interface OperationLog {
   id: string;
   user: string;
+  account: string;
   module: string;
+  menuId: string;
   action: string;
+  actionType: OperationActionType;
   detail: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
   ip: string;
   time: string;
 }
 
 export const operationLogs: OperationLog[] = [
-  { id: 'L001', user: '张三', module: '数据源', action: '创建', detail: '创建了数据源「订单数据库」', ip: '192.168.1.100', time: '2026-06-10 09:30:15' },
-  { id: 'L002', user: '李四', module: '数据集', action: '更新', detail: '更新了数据集「用户画像数据集」', ip: '192.168.1.101', time: '2026-06-10 10:15:22' },
-  { id: 'L003', user: '王五', module: '图表管理', action: '删除', detail: '删除了图表「测试图表」', ip: '192.168.1.102', time: '2026-06-10 11:05:08' },
-  { id: 'L004', user: '赵六', module: '仪表盘', action: '发布', detail: '发布了仪表盘「运营核心指标」', ip: '192.168.1.103', time: '2026-06-10 14:20:33' },
-  { id: 'L005', user: '张三', module: '用户管理', action: '创建', detail: '创建了用户「孙七」', ip: '192.168.1.100', time: '2026-06-09 16:45:10' },
-  { id: 'L006', user: '李四', module: '数据大屏', action: '编辑', detail: '编辑了大屏「618 大促实时大屏」', ip: '192.168.1.101', time: '2026-06-09 09:10:55' },
-  { id: 'L007', user: '王五', module: '自助取数', action: '下载', detail: '下载了取数结果「订单明细_20260609.csv」', ip: '192.168.1.102', time: '2026-06-09 11:30:40' },
-  { id: 'L008', user: '赵六', module: '报表', action: '导出', detail: '导出了报表「销售日报」', ip: '192.168.1.103', time: '2026-06-09 15:55:18' },
+  {
+    id: 'L001',
+    user: '张三',
+    account: 'zhangsan@company.com',
+    module: '数据源',
+    menuId: 'datasource',
+    action: '创建',
+    actionType: 'create',
+    detail: '创建了数据源「订单数据库」',
+    before: null,
+    after: { name: '订单数据库', type: 'MySQL', host: 'mysql.company.com', port: 3306, status: 'active' },
+    ip: '192.168.1.100',
+    time: '2026-06-10 09:30:15',
+  },
+  {
+    id: 'L002',
+    user: '李四',
+    account: 'lisi@company.com',
+    module: '数据集',
+    menuId: 'dataset',
+    action: '更新',
+    actionType: 'update',
+    detail: '更新了数据集「用户画像数据集」',
+    before: { name: '用户画像数据集', refreshInterval: 60, description: '原始描述' },
+    after: { name: '用户画像数据集', refreshInterval: 30, description: '更新后的描述内容' },
+    ip: '192.168.1.101',
+    time: '2026-06-10 10:15:22',
+  },
+  {
+    id: 'L003',
+    user: '王五',
+    account: 'wangwu@company.com',
+    module: '图表管理',
+    menuId: 'chart',
+    action: '删除',
+    actionType: 'delete',
+    detail: '删除了图表「测试图表」',
+    before: { name: '测试图表', type: 'line', dataset: '订单明细数据集' },
+    after: null,
+    ip: '192.168.1.102',
+    time: '2026-06-10 11:05:08',
+  },
+  {
+    id: 'L004',
+    user: '赵六',
+    account: 'zhaoliu@company.com',
+    module: '仪表盘',
+    menuId: 'dashboard',
+    action: '发布',
+    actionType: 'publish',
+    detail: '发布了仪表盘「运营核心指标」',
+    before: { status: 'draft' },
+    after: { status: 'published', publishedAt: '2026-06-10 14:20:33' },
+    ip: '192.168.1.103',
+    time: '2026-06-10 14:20:33',
+  },
+  {
+    id: 'L005',
+    user: '张三',
+    account: 'zhangsan@company.com',
+    module: '用户管理',
+    menuId: 'user-manage',
+    action: '创建',
+    actionType: 'create',
+    detail: '创建了用户「孙七」',
+    before: null,
+    after: { name: '孙七', email: 'sunqi@company.com', role: '业务人员', department: '市场部', status: 'active' },
+    ip: '192.168.1.100',
+    time: '2026-06-09 16:45:10',
+  },
+  {
+    id: 'L006',
+    user: '李四',
+    account: 'lisi@company.com',
+    module: '数据大屏',
+    menuId: 'data-screen',
+    action: '编辑',
+    actionType: 'update',
+    detail: '编辑了大屏「618 大促实时大屏」',
+    before: { name: '618 大促实时大屏', resolution: '1920×1080' },
+    after: { name: '618 大促实时大屏', resolution: '3840×1080' },
+    ip: '192.168.1.101',
+    time: '2026-06-09 09:10:55',
+  },
+  {
+    id: 'L007',
+    user: '王五',
+    account: 'wangwu@company.com',
+    module: '自助取数',
+    menuId: 'data-explore',
+    action: '下载',
+    actionType: 'download',
+    detail: '下载了取数结果「订单明细_20260609.csv」',
+    before: null,
+    after: { fileName: '订单明细_20260609.csv', rows: 12580, size: '2.3MB' },
+    ip: '192.168.1.102',
+    time: '2026-06-09 11:30:40',
+  },
+  {
+    id: 'L008',
+    user: '赵六',
+    account: 'zhaoliu@company.com',
+    module: '报表',
+    menuId: 'report',
+    action: '导出',
+    actionType: 'export',
+    detail: '导出了报表「销售日报」',
+    before: null,
+    after: { fileName: '销售日报.xlsx', format: 'xlsx' },
+    ip: '192.168.1.103',
+    time: '2026-06-09 15:55:18',
+  },
+  {
+    id: 'L009',
+    user: '张三',
+    account: 'zhangsan@company.com',
+    module: '角色管理',
+    menuId: 'role-manage',
+    action: '编辑',
+    actionType: 'update',
+    detail: '编辑了角色「数据分析师」',
+    before: { description: '可创建数据集、图表和仪表盘' },
+    after: { description: '可创建数据集、图表、仪表盘和报表' },
+    ip: '192.168.1.100',
+    time: '2026-06-09 14:22:10',
+  },
+  {
+    id: 'L010',
+    user: '李四',
+    account: 'lisi@company.com',
+    module: '租户管理',
+    menuId: 'tenant-manage',
+    action: '创建',
+    actionType: 'create',
+    detail: '创建了租户「华东分部」',
+    before: null,
+    after: { name: '华东分部', code: 'HD', userQuota: 50, status: 'active' },
+    ip: '192.168.1.101',
+    time: '2026-06-08 09:30:00',
+  },
+  {
+    id: 'L011',
+    user: '王五',
+    account: 'wangwu@company.com',
+    module: '指标监控',
+    menuId: 'metric-monitor',
+    action: '更新',
+    actionType: 'update',
+    detail: '更新了告警规则「订单量骤减」',
+    before: { threshold: 1000, notifyWay: '邮件' },
+    after: { threshold: 800, notifyWay: '邮件+短信' },
+    ip: '192.168.1.102',
+    time: '2026-06-08 16:15:42',
+  },
+  {
+    id: 'L012',
+    user: '赵六',
+    account: 'zhaoliu@company.com',
+    module: '数据门户',
+    menuId: 'data-portal',
+    action: '登录',
+    actionType: 'login',
+    detail: '登录了系统',
+    before: null,
+    after: { loginAt: '2026-06-08 08:55:12', userAgent: 'Chrome 145' },
+    ip: '192.168.1.103',
+    time: '2026-06-08 08:55:12',
+  },
 ];
 
 // ==================== 租户管理 ====================
@@ -526,18 +1088,98 @@ export interface TenantItem {
   name: string;
   code: string;
   contact: string;
+  contactPhone?: string;
   userQuota: number;
   storageQuota: string;
   status: 'active' | 'inactive';
   expireAt: string;
+  createdAt?: string;
+  description?: string;
+  /** 租户管理员用户 ID */
+  adminUserId?: string;
 }
 
 export const tenants: TenantItem[] = [
-  { id: 'T001', name: '总部', code: 'HQ', contact: '张三', userQuota: 100, storageQuota: '500GB', status: 'active', expireAt: '2027-06-10' },
-  { id: 'T002', name: '华东分部', code: 'HD', contact: '李四', userQuota: 50, storageQuota: '200GB', status: 'active', expireAt: '2027-03-15' },
-  { id: 'T003', name: '华南分部', code: 'HN', contact: '王五', userQuota: 50, storageQuota: '200GB', status: 'active', expireAt: '2027-03-15' },
-  { id: 'T004', name: '华北分部', code: 'HB', contact: '赵六', userQuota: 30, storageQuota: '100GB', status: 'inactive', expireAt: '2026-06-01' },
+  {
+    id: 'T001',
+    name: '总部',
+    code: 'HQ',
+    contact: '张三',
+    contactPhone: '13800138001',
+    userQuota: 100,
+    storageQuota: '500GB',
+    status: 'active',
+    expireAt: '2027-06-10',
+    createdAt: '2026-01-01',
+    description: '集团总部租户，管理全部数据资产与系统配置。',
+    adminUserId: 'U001',
+  },
+  {
+    id: 'T002',
+    name: '华东分部',
+    code: 'HD',
+    contact: '李四',
+    contactPhone: '13800138002',
+    userQuota: 50,
+    storageQuota: '200GB',
+    status: 'active',
+    expireAt: '2027-03-15',
+    createdAt: '2026-02-01',
+    description: '华东区域业务数据与运营看板。',
+    adminUserId: 'U002',
+  },
+  {
+    id: 'T003',
+    name: '华南分部',
+    code: 'HN',
+    contact: '王五',
+    contactPhone: '13800138003',
+    userQuota: 50,
+    storageQuota: '200GB',
+    status: 'active',
+    expireAt: '2027-03-15',
+    createdAt: '2026-02-15',
+    description: '华南区域业务数据与运营看板。',
+    adminUserId: 'U003',
+  },
+  {
+    id: 'T004',
+    name: '华北分部',
+    code: 'HB',
+    contact: '赵六',
+    contactPhone: '13800138004',
+    userQuota: 30,
+    storageQuota: '100GB',
+    status: 'inactive',
+    expireAt: '2026-06-01',
+    createdAt: '2026-03-01',
+    description: '华北区域业务数据与运营看板（已停用）。',
+    adminUserId: 'U004',
+  },
 ];
+
+/** 获取租户管理员名称 */
+export function getTenantAdminName(tenantId: string): string {
+  const tenant = tenants.find((t) => t.id === tenantId);
+  if (!tenant?.adminUserId) return '-';
+  const user = users.find((u) => u.id === tenant.adminUserId);
+  return user?.name || '-';
+}
+
+/** 获取指定租户下的成员（用户与租户存在 membership 关系） */
+export function getTenantMembers(tenantId: string): UserItem[] {
+  return users.filter((u) => u.tenantMemberships?.some((m) => m.tenantId === tenantId));
+}
+
+/** 当前登录用户（原型固定为张三，系统超级管理员） */
+export const currentUser: UserItem = users.find((u) => u.id === 'U001')!;
+
+/** 当前登录用户可访问的租户列表 */
+export function getCurrentUserTenants(user: UserItem = currentUser): TenantItem[] {
+  if (user.isSuperAdmin) return tenants.filter((t) => t.status === 'active');
+  const ids = new Set(user.tenantMemberships?.map((m) => m.tenantId) || []);
+  return tenants.filter((t) => ids.has(t.id));
+}
 
 // ==================== 指标监控 ====================
 export interface MetricData {

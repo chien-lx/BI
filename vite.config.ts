@@ -94,6 +94,7 @@ export default defineConfig(({ command }) => {
       include: [
         'echarts',
         'lucide-react',
+        'xlsx',
       ],
     },
 
@@ -106,6 +107,7 @@ export default defineConfig(({ command }) => {
       ],
       alias: [
         { find: '@', replacement: path.resolve(projectRoot, 'src') },
+        { find: /^xlsx$/, replacement: '/Users/study/.workbuddy/binaries/node/workspace/node_modules/xlsx/xlsx.mjs' },
         !isIifeBuild && !isServe && fs.existsSync(path.resolve(projectRoot, 'src/common/react-shim.js')) && {
           find: /^react$/,
           replacement: path.resolve(projectRoot, 'src/common/react-shim.js'),

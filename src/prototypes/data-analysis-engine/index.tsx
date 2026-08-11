@@ -27,6 +27,7 @@ import RoleManagePage from './pages/RoleManagePage';
 import OperationLogPage from './pages/OperationLogPage';
 import TenantManagePage from './pages/TenantManagePage';
 import MetricsPage from './pages/MetricsPage';
+import { AuthProvider } from './contexts/AuthContext';
 import './style.css';
 import { AnnotationViewer, type AnnotationSourceDocument } from '@axhub/annotation';
 import annotationSourceDocument from './annotation-source.json';
@@ -108,10 +109,10 @@ export default function DataAnalysisEngine() {
 
   if (isFullScreenPage) {
     return (
-      <>
+      <AuthProvider>
         <div className="dae-page" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                <PageComponent />
-              </div>
+          <PageComponent />
+        </div>
         <AnnotationViewer
           source={annotationSourceDocument as unknown as AnnotationSourceDocument}
           options={{
@@ -123,13 +124,15 @@ export default function DataAnalysisEngine() {
             emptyWhenNoData: true,
           }}
         />
-      </>
+      </AuthProvider>
     );
   }
 
   return (
-    <Layout activePage={layoutActivePage as PageId} onNavigate={(p) => setPage(p)}>
-      <PageComponent />
-    </Layout>
+    <AuthProvider>
+      <Layout activePage={layoutActivePage as PageId} onNavigate={(p) => setPage(p)}>
+        <PageComponent />
+      </Layout>
+    </AuthProvider>
   );
 }

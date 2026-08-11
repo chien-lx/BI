@@ -576,6 +576,18 @@ export interface DatasetField {
   dataType: string;
 }
 
+/** 图表/大屏组件配置中被选中的字段（维度或指标） */
+export interface SelectedField {
+  name: string;
+  dataType: string;
+  aggregation?: string;
+  alias?: string;
+  sort?: 'asc' | 'desc' | 'none';
+  visible?: boolean;
+}
+
+export const aggOptions = ['SUM', 'AVG', 'COUNT', 'MAX', 'MIN'];
+
 export const datasetFields: Record<string, DatasetField[]> = {
   '订单明细数据集': [
     { name: '订单日期', type: 'dimension', dataType: '日期' },

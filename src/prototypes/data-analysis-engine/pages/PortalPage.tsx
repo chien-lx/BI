@@ -1,12 +1,23 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FileBarChart, LayoutDashboard, Monitor, FileText,
-  ChevronRight, ChevronDown, Search, BarChart3, Table2, Eye
+  Search, BarChart3, Table2, Eye,
+  Bell, Download, Star, StarOff, Lock, ShieldCheck, Clock, CalendarDays, FileImage,
 } from 'lucide-react';
+import { toPng } from 'html-to-image';
 import ChartRenderer from '../components/ChartRenderer';
+import Modal from '../components/Modal';
+import Drawer from '../components/Drawer';
+import IconAction from '../components/IconAction';
+import { useAuth } from '../contexts/AuthContext';
+import { parseHashParams } from '../../../common/useHashPage';
 import {
   charts, reports, dashboards, dataScreens,
-  chartSampleData, pieSampleData
+  chartSampleData, pieSampleData, currentUser, getAssetPermission,
+  resourceTypeLabel, pushChannelLabel,
+  appendSubscribeApproval, nextSubscribeId,
+  type SubscribeApproval, type SubscribeCycle, type SubscribeScope,
+  type ChartItem, type Report,
 } from '../data/mockData';
 
 /* ==================== 类型定义 ==================== */
@@ -95,7 +106,6 @@ const reportDetails: Record<string, ReportDetail> = {
   },
 };
 
-// 为其他报表生成默认详情
 const defaultReportDetail = (name: string, datasetName: string): ReportDetail => ({
   name,
   datasetName,
@@ -141,7 +151,37 @@ const chartTypeMap: Record<string, 'bar' | 'line' | 'area' | 'pie'> = {
   '散点图': 'bar',
 };
 
-/* ==================== 左侧目录树 ==================== */
+const assetTypeLabel: Record<AssetType, string> = {
+  chart: '图表',
+  report: '报表',
+  dashboard: '仪表盘',
+  screen: '数据大屏',
+};
+
+/* ==================== 收藏状态 ==================== */
+
+function useFavorites() {
+  const [favorites, setFavorites] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('dae-portal-favorites');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dae-portal-favorites', JSON.stringify(favorites));
+  }, [favorites]);
+
+  const toggle = (key: string) => {
+    setFavorites((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  return { favorites, toggle };
+}
+
+/* ==================== 左侧资产目录（页签切换） ==================== */
 
 function DirectoryTree({
   groups,
@@ -149,24 +189,21 @@ function DirectoryTree({
   onSelect,
   search,
   onSearchChange,
+  favorites,
+  activeTab,
+  onActiveTabChange,
 }: {
   groups: TreeGroup[];
   selectedId: string | null;
   onSelect: (item: TreeItem) => void;
   search: string;
   onSearchChange: (v: string) => void;
+  favorites: Record<string, boolean>;
+  activeTab: AssetType;
+  onActiveTabChange: (tab: AssetType) => void;
 }) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    chart: true,
-    report: true,
-    dashboard: true,
-    screen: true,
-  });
 
-  const toggleGroup = (key: string) => {
-    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
+  // 搜索时跨分类过滤；无搜索时只展示当前页签
   const filteredGroups = useMemo(() => {
     if (!search.trim()) return groups;
     const s = search.trim().toLowerCase();
@@ -178,20 +215,33 @@ function DirectoryTree({
       .filter((g) => g.items.length > 0);
   }, [groups, search]);
 
+  // 当前要展示的 items：搜索模式下展示所有匹配项，否则只展示当前页签
+  const displayItems = useMemo(() => {
+    if (search.trim()) {
+      return filteredGroups.flatMap((g) =>
+        g.items.map((item) => ({ ...item, _groupKey: g.key }))
+      );
+    }
+    const active = groups.find((g) => g.key === activeTab);
+    return (active?.items ?? []).map((item) => ({ ...item, _groupKey: activeTab }));
+  }, [filteredGroups, groups, activeTab, search]);
+
   return (
     <div
       style={{
-        width: 260,
-        minWidth: 260,
+        width: 280,
+        minWidth: 280,
         background: '#fff',
-        borderRight: '1px solid var(--dae-border)',
+        border: '1px solid var(--dae-border)',
+        borderRadius: 'var(--dae-radius-lg) 0 0 var(--dae-radius-lg)',
+        boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
         overflow: 'hidden',
       }}
     >
-      {/* 顶部标题 */}
+      {/* 标题栏 */}
       <div
         style={{
           padding: '14px 16px',
@@ -239,110 +289,192 @@ function DirectoryTree({
         </div>
       </div>
 
-      {/* 树节点 */}
+      {/* 分类切换 — 分段控制器风格 */}
+      {!search.trim() && (
+        <div
+          style={{
+            padding: '8px 10px',
+            borderBottom: '1px solid var(--dae-border)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              gap: 0,
+              background: 'var(--dae-surface)',
+              borderRadius: 'var(--dae-radius-md)',
+              padding: 2,
+            }}
+          >
+            {groups.map((group) => {
+              const Icon = group.icon;
+              const isActive = activeTab === group.key;
+              return (
+                <button
+                  key={group.key}
+                  onClick={() => onActiveTabChange(group.key)}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 3,
+                    padding: '6px 4px',
+                    fontSize: 12,
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? 'var(--dae-primary)' : 'var(--dae-ink-muted)',
+                    background: isActive ? '#fff' : 'transparent',
+                    border: 'none',
+                    borderRadius: 'calc(var(--dae-radius-md) - 1px)',
+                    cursor: 'pointer',
+                    boxShadow: isActive ? '0 0.5px 2px rgba(0,0,0,0.06)' : 'none',
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={`${group.label}（${group.items.length}）`}
+                >
+                  <Icon size={13} />
+                  <span>{group.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 资产列表 */}
       <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }} className="dae-scroll">
-        {filteredGroups.map((group) => {
-          const isExpanded = expanded[group.key];
-          const Icon = group.icon;
-          return (
-            <div key={group.key} style={{ marginBottom: 4 }}>
-              {/* 分类节点 */}
+        {displayItems.length === 0 ? (
+          <div
+            style={{
+              textAlign: 'center',
+              color: 'var(--dae-ink-subtle)',
+              fontSize: 13,
+              padding: '24px 16px',
+            }}
+          >
+            {search.trim() ? '未找到匹配的资产' : '暂无资产'}
+          </div>
+        ) : (
+          displayItems.map((item) => {
+            const groupKey = item._groupKey as AssetType;
+            const isActive = selectedId === item.id;
+            const favKey = `${groupKey}:${item.id}`;
+            const isFav = favorites[favKey];
+            return (
               <button
-                onClick={() => toggleGroup(group.key)}
+                key={item.id}
+                onClick={() => onSelect(item as TreeItem)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  width: '100%',
-                  padding: '8px 16px',
+                  padding: '9px 16px',
                   fontSize: 13,
-                  fontWeight: 600,
-                  color: 'var(--dae-ink-secondary)',
-                  background: 'transparent',
+                  color: isActive ? 'var(--dae-primary)' : 'var(--dae-ink-secondary)',
+                  background: isActive ? 'var(--dae-primary-light)' : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                   textAlign: 'left',
+                  fontWeight: isActive ? 500 : 400,
+                  margin: '2px 8px',
+                  width: 'calc(100% - 16px)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  borderRadius: 'var(--dae-radius-md)',
+                  transition: 'background 0.1s ease',
                 }}
+                title={item.name}
               >
-                {isExpanded ? (
-                  <ChevronDown size={14} style={{ color: 'var(--dae-ink-muted)' }} />
-                ) : (
-                  <ChevronRight size={14} style={{ color: 'var(--dae-ink-muted)' }} />
-                )}
-                <Icon size={16} style={{ color: 'var(--dae-primary)' }} />
-                <span style={{ flex: 1 }}>{group.label}</span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: 'var(--dae-ink-subtle)',
-                    fontWeight: 500,
-                    background: 'var(--dae-surface)',
-                    padding: '1px 6px',
-                    borderRadius: 8,
-                  }}
-                >
-                  {group.items.length}
+                {groupKey === 'chart' && <BarChart3 size={14} style={{ flexShrink: 0 }} />}
+                {groupKey === 'report' && <Table2 size={14} style={{ flexShrink: 0 }} />}
+                {groupKey === 'dashboard' && <LayoutDashboard size={14} style={{ flexShrink: 0 }} />}
+                {groupKey === 'screen' && <Monitor size={14} style={{ flexShrink: 0 }} />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                  {item.name}
                 </span>
+                {isFav && <Star size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />}
               </button>
-
-              {/* 子节点 */}
-              {isExpanded && (
-                <div style={{ paddingLeft: 12 }}>
-                  {group.items.map((item) => {
-                    const isActive = selectedId === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => onSelect(item)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          padding: '7px 12px 7px 28px',
-                          fontSize: 13,
-                          color: isActive ? 'var(--dae-primary)' : 'var(--dae-ink-secondary)',
-                          background: isActive ? 'var(--dae-primary-light)' : 'transparent',
-                          border: 'none',
-                          borderRadius: 'var(--dae-radius-md)',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          fontWeight: isActive ? 500 : 400,
-                          margin: '2px 8px',
-                          width: 'calc(100% - 16px)',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                        title={item.name}
-                      >
-                        {group.key === 'chart' && <BarChart3 size={14} style={{ flexShrink: 0 }} />}
-                        {group.key === 'report' && <Table2 size={14} style={{ flexShrink: 0 }} />}
-                        {group.key === 'dashboard' && <LayoutDashboard size={14} style={{ flexShrink: 0 }} />}
-                        {group.key === 'screen' && <Monitor size={14} style={{ flexShrink: 0 }} />}
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {item.name}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
+    </div>
+  );
+}
+
+/* ==================== 权限不足占位 ==================== */
+
+function PermissionDenied({
+  asset,
+  onApply,
+}: {
+  asset: TreeItem;
+  onApply: () => void;
+}) {
+  return (
+    <div
+      style={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+        color: 'var(--dae-ink-muted)',
+        textAlign: 'center',
+        padding: 40,
+      }}
+    >
+      <div
+        style={{
+          width: 80,
+          height: 80,
+          borderRadius: '50%',
+          background: 'var(--dae-surface)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Lock size={36} style={{ color: 'var(--dae-ink-subtle)' }} />
+      </div>
+      <div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 8 }}>
+          暂无「{assetTypeLabel[asset.type]}」查看权限
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--dae-ink-muted)', maxWidth: 420, lineHeight: 1.6 }}>
+          “{asset.name}” 已上线至数据门户，但您当前的角色未被授权查看该数据。
+          <br />
+          系统默认对无权限内容做不可见处理，以避免数据形态泄露；如需访问请提交权限申请。
+        </div>
+      </div>
+      <button className="dae-btn dae-btn-primary" onClick={onApply}>
+        <ShieldCheck size={16} />
+        申请查看权限
+      </button>
     </div>
   );
 }
 
 /* ==================== 右侧内容：报表渲染 ==================== */
 
-function ReportContent({ reportId }: { reportId: string }) {
+function ReportContent({
+  reportId,
+}: {
+  reportId: string;
+}) {
   const report = reports.find((r) => r.id === reportId);
   const detail = reportDetails[reportId] || defaultReportDetail(report?.name || '报表', report?.datasetName || '-');
 
   const [dims, setDims] = useState(detail.dimensions);
   const [metrics, setMetrics] = useState(detail.metrics);
+
+  useEffect(() => {
+    setDims(detail.dimensions);
+    setMetrics(detail.metrics);
+  }, [reportId]);
 
   const visibleCols = [
     ...dims.filter((d) => d.visible).map((d) => d.name),
@@ -357,8 +489,7 @@ function ReportContent({ reportId }: { reportId: string }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, height: '100%', overflow: 'auto' }} className="dae-scroll">
-      {/* 标题 */}
+    <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
         <Table2 size={20} style={{ color: 'var(--dae-primary)' }} />
         <div>
@@ -369,7 +500,6 @@ function ReportContent({ reportId }: { reportId: string }) {
         </div>
       </div>
 
-      {/* 可选维度 */}
       <section style={{ background: '#fff', borderRadius: 'var(--dae-radius-md)', border: '1px solid var(--dae-border)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid var(--dae-border)', background: 'var(--dae-surface)' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--dae-ink)' }}>可选维度</span>
@@ -392,7 +522,6 @@ function ReportContent({ reportId }: { reportId: string }) {
         </div>
       </section>
 
-      {/* 可选指标 */}
       <section style={{ background: '#fff', borderRadius: 'var(--dae-radius-md)', border: '1px solid var(--dae-border)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid var(--dae-border)', background: 'var(--dae-surface)' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--dae-ink)' }}>可选指标</span>
@@ -415,7 +544,6 @@ function ReportContent({ reportId }: { reportId: string }) {
         </div>
       </section>
 
-      {/* 筛选条件 */}
       {detail.filters.length > 0 && (
         <section style={{ background: '#fff', borderRadius: 'var(--dae-radius-md)', border: '1px solid var(--dae-border)', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid var(--dae-border)', background: 'var(--dae-surface)' }}>
@@ -438,7 +566,6 @@ function ReportContent({ reportId }: { reportId: string }) {
         </section>
       )}
 
-      {/* 数据表格 */}
       <section style={{ background: '#fff', borderRadius: 'var(--dae-radius-md)', border: '1px solid var(--dae-border)', overflow: 'hidden', flex: 1, minHeight: 300 }}>
         <div style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid var(--dae-border)', background: 'var(--dae-surface)' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--dae-ink)' }}>数据预览</span>
@@ -473,15 +600,37 @@ function ReportContent({ reportId }: { reportId: string }) {
 
 /* ==================== 右侧内容：图表渲染 ==================== */
 
-function ChartContent({ chartId }: { chartId: string }) {
+function ChartContent({
+  chartId,
+  compact = false,
+}: {
+  chartId: string;
+  compact?: boolean;
+}) {
   const chart = charts.find((c) => c.id === chartId);
   if (!chart) return <div className="dae-empty"><BarChart3 size={40} /><p>未找到图表</p></div>;
 
   const type = chartTypeMap[chart.type] || 'bar';
   const isPie = type === 'pie';
 
+  /* compact 模式：标题已在统一卡片头部，只渲染图表卡片 */
+  if (compact) {
+    return (
+      <div style={{ width: '100%', minWidth: 0, padding: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 'var(--dae-radius-lg)', border: '1px solid var(--dae-border)', padding: 24, boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+          <ChartRenderer
+            type={type}
+            data={isPie ? pieSampleData : chartSampleData}
+            yKeys={isPie ? undefined : ['value', 'value2']}
+            height={400}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', overflow: 'auto' }} className="dae-scroll">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <BarChart3 size={20} style={{ color: 'var(--dae-primary)' }} />
         <div>
@@ -492,7 +641,7 @@ function ChartContent({ chartId }: { chartId: string }) {
         </div>
       </div>
 
-      <div style={{ background: '#fff', borderRadius: 'var(--dae-radius-lg)', border: '1px solid var(--dae-border)', padding: 24, flex: 1, minHeight: 400 }}>
+      <div style={{ width: '100%', minWidth: 0, background: '#fff', borderRadius: 'var(--dae-radius-lg)', border: '1px solid var(--dae-border)', padding: 24, flex: 1, minHeight: 400 }}>
         <ChartRenderer
           type={type}
           data={isPie ? pieSampleData : chartSampleData}
@@ -506,14 +655,65 @@ function ChartContent({ chartId }: { chartId: string }) {
 
 /* ==================== 右侧内容：仪表盘渲染 ==================== */
 
-function DashboardContent({ dashboardId }: { dashboardId: string }) {
+function DashboardContent({
+  dashboardId,
+  compact = false,
+}: {
+  dashboardId: string;
+  compact?: boolean;
+}) {
   const dashboard = dashboards.find((d) => d.id === dashboardId);
   if (!dashboard) return <div className="dae-empty"><LayoutDashboard size={40} /><p>未找到仪表盘</p></div>;
 
   const chartsList = dashboard.charts || [];
 
+  if (compact) {
+    return (
+      <div style={{ width: '100%', minWidth: 0, padding: 20 }}>
+        {chartsList.length === 0 ? (
+          <div className="dae-empty" style={{ background: '#fff', borderRadius: 'var(--dae-radius-lg)', border: '1px solid var(--dae-border)' }}>
+            <BarChart3 size={48} />
+            <p>该仪表盘暂无图表</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, maxWidth: 1100, margin: '0 auto' }}>
+            {chartsList.map((chart) => {
+              const type = chart.type === 'table' ? 'bar' : chart.type;
+              const isPie = type === 'pie';
+              return (
+                <div
+                  key={chart.id}
+                  style={{
+                    background: '#fff',
+                    borderRadius: 'var(--dae-radius-lg)',
+                    border: '1px solid var(--dae-border)',
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 12 }}>
+                    {chart.name}
+                  </div>
+                  <div style={{ flex: 1, minHeight: 260 }}>
+                    <ChartRenderer
+                      type={type}
+                      data={isPie ? pieSampleData : chartSampleData}
+                      yKeys={isPie ? undefined : ['value', 'value2']}
+                      height={280}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', overflow: 'auto' }} className="dae-scroll">
+    <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <LayoutDashboard size={20} style={{ color: 'var(--dae-primary)' }} />
         <div>
@@ -568,11 +768,14 @@ function DashboardContent({ dashboardId }: { dashboardId: string }) {
 
 /* ==================== 右侧内容：数据大屏渲染 ==================== */
 
-function ScreenContent({ screenId }: { screenId: string }) {
+function ScreenContent({
+  screenId,
+}: {
+  screenId: string;
+}) {
   const screen = dataScreens.find((s) => s.id === screenId);
   if (!screen) return <div className="dae-empty"><Monitor size={40} /><p>未找到数据大屏</p></div>;
 
-  // 模拟大屏数据
   const screenMetrics = [
     { label: '实时销售额', value: '¥ 2,345,678', change: '+12.5%', color: '#10b981' },
     { label: '订单数量', value: '12,456', change: '+8.3%', color: '#3b82f6' },
@@ -581,7 +784,7 @@ function ScreenContent({ screenId }: { screenId: string }) {
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', overflow: 'auto' }} className="dae-scroll">
+    <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Monitor size={20} style={{ color: 'var(--dae-primary)' }} />
         <div>
@@ -592,7 +795,6 @@ function ScreenContent({ screenId }: { screenId: string }) {
         </div>
       </div>
 
-      {/* 模拟大屏预览 */}
       <div
         style={{
           background: '#0b1121',
@@ -605,7 +807,6 @@ function ScreenContent({ screenId }: { screenId: string }) {
           gap: 20,
         }}
       >
-        {/* 大屏标题 */}
         <div style={{ textAlign: 'center', padding: '8px 0', borderBottom: '1px solid rgba(59,130,246,0.3)' }}>
           <div style={{ fontSize: 22, fontWeight: 700, color: '#60a5fa', letterSpacing: 2 }}>
             {screen.name}
@@ -615,7 +816,6 @@ function ScreenContent({ screenId }: { screenId: string }) {
           </div>
         </div>
 
-        {/* 指标卡片 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           {screenMetrics.map((metric, idx) => (
             <div
@@ -639,7 +839,6 @@ function ScreenContent({ screenId }: { screenId: string }) {
           ))}
         </div>
 
-        {/* 模拟图表区域 */}
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, flex: 1 }}>
           <div
             style={{
@@ -677,37 +876,522 @@ function ScreenContent({ screenId }: { screenId: string }) {
   );
 }
 
+/* ==================== 数据订阅 Drawer ==================== */
+
+function SubscribeDrawer({
+  open,
+  asset,
+  onClose,
+}: {
+  open: boolean;
+  asset: TreeItem | null;
+  onClose: () => void;
+}) {
+  const { currentUser: user, currentTenantId } = useAuth();
+  const [name, setName] = useState('');
+  const [cycle, setCycle] = useState<SubscribeCycle>('daily');
+  const [scope, setScope] = useState<SubscribeScope>('full');
+  const [channel, setChannel] = useState<keyof typeof pushChannelLabel>('email');
+  const [receiver, setReceiver] = useState('');
+  const [reason, setReason] = useState('');
+  const [submittedId, setSubmittedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setName(asset ? `${asset.name}订阅` : '');
+      setChannel('email');
+      setReceiver(user.email || '');
+      setReason('');
+      setSubmittedId(null);
+    }
+  }, [open, asset, user.email]);
+
+  if (!asset) return null;
+
+  const handleSubmit = () => {
+    if (!name.trim() || submittedId) return;
+    const id = nextSubscribeId();
+    const item: SubscribeApproval = {
+      id,
+      title: name.trim(),
+      applicantId: user.id,
+      applicantName: user.name,
+      applicantDept: (user as { department?: string }).department || '未指定部门',
+      tenantId: currentTenantId,
+      resourceType: asset.type,
+      resourceId: asset.id,
+      resourceName: asset.name,
+      cycle,
+      scope,
+      channel,
+      receiver: receiver.trim() || user.email || user.name,
+      reason: reason.trim() || undefined,
+      status: 'pending',
+      createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+      auditRecords: [],
+    };
+    appendSubscribeApproval(item);
+    setSubmittedId(id);
+  };
+
+  return (
+    <Drawer
+      open={open}
+      title="数据订阅"
+      onClose={onClose}
+      width={480}
+      footer={
+        <>
+          <button className="dae-btn dae-btn-secondary" onClick={onClose}>
+            {submittedId ? '关闭' : '取消'}
+          </button>
+          {!submittedId && (
+            <button
+              className="dae-btn dae-btn-primary"
+              onClick={handleSubmit}
+              disabled={!name.trim() || !receiver.trim()}
+            >
+              提交订阅申请
+            </button>
+          )}
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {submittedId ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              padding: 20,
+              background: 'var(--dae-primary-light)',
+              borderRadius: 12,
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--dae-primary)' }}>
+              订阅申请已提交，等待审核
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--dae-ink-secondary)' }}>
+              申请编号：{submittedId}。审核人（管理员授权）通过后将按订阅周期推送数据。
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--dae-ink-muted)' }}>
+              可前往「流程审批 → 任务审核」查看进度
+            </div>
+          </div>
+        ) : null}
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>订阅对象</label>
+          <div className="dae-input" style={{ background: 'var(--dae-surface)', color: 'var(--dae-ink-muted)' }}>
+            {resourceTypeLabel[asset.type as keyof typeof resourceTypeLabel] || assetTypeLabel[asset.type]}：{asset.name}
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>
+            订阅名称<span style={{ color: '#ff4d4f' }}> *</span>
+          </label>
+          <input className="dae-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="请输入订阅任务名称" disabled={!!submittedId} />
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>
+            订阅周期<span style={{ color: '#ff4d4f' }}> *</span>
+          </label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {[
+              { key: 'daily', label: '每天' },
+              { key: 'weekly', label: '每周' },
+              { key: 'monthly', label: '每月' },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setCycle(opt.key as SubscribeCycle)}
+                disabled={!!submittedId}
+                className={cycle === opt.key ? 'dae-btn dae-btn-primary' : 'dae-btn dae-btn-secondary'}
+                style={{ flex: 1, justifyContent: 'center' }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>数据范围</label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {[
+              { key: 'current', label: '当前查询条件所见数据' },
+              { key: 'full', label: '全量数据' },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setScope(opt.key as SubscribeScope)}
+                disabled={!!submittedId}
+                className={scope === opt.key ? 'dae-btn dae-btn-primary' : 'dae-btn dae-btn-secondary'}
+                style={{ flex: 1, justifyContent: 'center' }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--dae-ink-muted)', marginTop: 6 }}>
+            {scope === 'current'
+              ? '按当前页面筛选条件生成订阅数据，后续若调整查询条件需重新创建订阅。'
+              : '不受页面筛选条件影响，始终推送该资产的完整可用数据。'}
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>
+            推送方式<span style={{ color: '#ff4d4f' }}> *</span>
+          </label>
+          <select className="dae-input" value={channel} onChange={(e) => setChannel(e.target.value as keyof typeof pushChannelLabel)} disabled={!!submittedId}>
+            {Object.entries(pushChannelLabel).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>
+            接收方<span style={{ color: '#ff4d4f' }}> *</span>
+          </label>
+          <input className="dae-input" value={receiver} onChange={(e) => setReceiver(e.target.value)} placeholder="邮箱 / 站内信接收人 / 群名" disabled={!!submittedId} />
+          <div style={{ fontSize: 12, color: 'var(--dae-ink-muted)', marginTop: 6 }}>
+            按推送方式填写：邮件填邮箱、企业微信填群名、站内信填接收人姓名。
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>
+            申请理由<span style={{ color: 'var(--dae-ink-muted)', fontWeight: 400 }}>（选填，便于审核）</span>
+          </label>
+          <textarea
+            className="dae-input"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="简要说明订阅用途，将展示给审核人"
+            disabled={!!submittedId}
+            rows={3}
+            style={{ resize: 'vertical', minHeight: 60 }}
+          />
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+/* ==================== 权限申请 Modal ==================== */
+
+function ApplyPermissionModal({
+  open,
+  asset,
+  onClose,
+}: {
+  open: boolean;
+  asset: TreeItem | null;
+  onClose: () => void;
+}) {
+  const [level, setLevel] = useState<'view' | 'manage'>('view');
+  const [reason, setReason] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setReason('');
+      setSubmitted(false);
+      setLevel('view');
+    }
+  }, [open]);
+
+  if (!asset) return null;
+
+  return (
+    <Modal
+      open={open}
+      title="申请查看权限"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="dae-btn dae-btn-secondary" onClick={onClose}>取消</button>
+          <button
+            className="dae-btn dae-btn-primary"
+            onClick={() => setSubmitted(true)}
+            disabled={!reason.trim() || submitted}
+          >
+            {submitted ? '已提交' : '提交申请'}
+          </button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>申请对象</label>
+          <div className="dae-input" style={{ background: 'var(--dae-surface)', color: 'var(--dae-ink-muted)' }}>
+            {assetTypeLabel[asset.type]}：{asset.name}
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>申请权限</label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => setLevel('view')}
+              className={level === 'view' ? 'dae-btn dae-btn-primary' : 'dae-btn dae-btn-secondary'}
+              style={{ flex: 1, justifyContent: 'center' }}
+            >
+              仅查看
+            </button>
+            <button
+              onClick={() => setLevel('manage')}
+              className={level === 'manage' ? 'dae-btn dae-btn-primary' : 'dae-btn dae-btn-secondary'}
+              style={{ flex: 1, justifyContent: 'center' }}
+            >
+              查看并管理
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>申请理由</label>
+          <textarea
+            className="dae-input"
+            rows={4}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="请说明访问该数据的业务场景及用途..."
+            style={{ resize: 'none' }}
+          />
+        </div>
+
+        <div style={{ fontSize: 12, color: 'var(--dae-ink-muted)', lineHeight: 1.6, background: 'var(--dae-surface)', padding: 10, borderRadius: 'var(--dae-radius-md)' }}>
+          <strong>权限策略说明：</strong>数据门户中已上线但您无权限的资产将默认不可见，避免敏感数据形态泄露；审批通过后将按授权级别开放查看或管理。
+        </div>
+
+        {submitted && (
+          <div className="dae-tag dae-tag-green" style={{ justifyContent: 'center', padding: '8px 12px' }}>
+            申请已提交，等待租户管理员审批
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 /* ==================== 内容路由 ==================== */
 
-function ContentRenderer({ selected }: { selected: TreeItem | null }) {
+function ContentRenderer({
+  selected,
+  favorites,
+  onToggleFav,
+  onSubscribe,
+  onApply,
+}: {
+  selected: TreeItem | null;
+  favorites: Record<string, boolean>;
+  onToggleFav: (key: string) => void;
+  onSubscribe: () => void;
+  onApply: () => void;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
+
+  /* 资产元数据描述（必须放在早期 return 之前调用，遵守 hooks 规则） */
+  const assetMeta = useMemo(() => {
+    if (!selected) return { icon: BarChart3, extra: null };
+    switch (selected.type) {
+      case 'chart':
+        return { icon: BarChart3, extra: charts.find((c) => c.id === selected.id) };
+      case 'report':
+        return { icon: Table2, extra: reports.find((r) => r.id === selected.id) };
+      case 'dashboard':
+        return { icon: LayoutDashboard, extra: dashboards.find((d) => d.id === selected.id) };
+      case 'screen':
+        return { icon: Monitor, extra: dataScreens.find((s) => s.id === selected.id) };
+      default:
+        return { icon: BarChart3, extra: null };
+    }
+  }, [selected]);
+
   if (!selected) {
     return (
       <div className="dae-empty" style={{ height: '100%' }}>
         <Search size={48} style={{ color: 'var(--dae-ink-subtle)' }} />
-        <p>请在左侧目录树中选择一个资产查看</p>
+        <p>请在左侧目录中选择一个资产查看</p>
       </div>
     );
   }
 
-  switch (selected.type) {
-    case 'report':
-      return <ReportContent reportId={selected.id} />;
-    case 'chart':
-      return <ChartContent chartId={selected.id} />;
-    case 'dashboard':
-      return <DashboardContent dashboardId={selected.id} />;
-    case 'screen':
-      return <ScreenContent screenId={selected.id} />;
-    default:
-      return null;
-  }
+  const permission = getAssetPermission(currentUser, selected.type, selected.id);
+  const favKey = `${selected.type}:${selected.id}`;
+  const isFav = favorites[favKey];
+
+  const MetaIcon = assetMeta.icon;
+  const extra = assetMeta.extra;
+
+  const handleExportImage = async () => {
+    if (!contentRef.current || !selected) return;
+    setExporting(true);
+    const node = contentRef.current;
+    const original = {
+      width: node.style.width, minWidth: node.style.minWidth,
+      height: node.style.height, overflow: node.style.overflow,
+      position: node.style.position, left: node.style.left, top: node.style.top,
+      zIndex: node.style.zIndex, backgroundColor: node.style.backgroundColor,
+    };
+    try {
+      const width = node.scrollWidth;
+      const height = node.scrollHeight;
+      node.style.position = 'fixed'; node.style.top = '-9999px'; node.style.left = '-9999px';
+      node.style.zIndex = '-1'; node.style.width = `${width}px`; node.style.minWidth = `${width}px`;
+      node.style.height = `${height}px`; node.style.overflow = 'visible';
+      node.style.backgroundColor = '#ffffff';
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const dataUrl = await toPng(node, { backgroundColor: '#ffffff', pixelRatio: 2, cacheBust: true, skipFonts: true, width, height });
+      const link = document.createElement('a');
+      link.download = `${selected.name}.png`;
+      link.href = dataUrl; link.click();
+    } catch (e) {
+      console.error('导出图片失败', e); alert('导出图片失败，请重试');
+    } finally {
+      Object.assign(node.style, original); setExporting(false);
+    }
+  };
+
+  return (
+    <div
+      ref={contentRef}
+      style={{
+        width: '100%', minWidth: 0, height: '100%',
+        display: 'flex', flexDirection: 'column',
+        background: '#fff',
+        overflow: 'hidden',
+      }}
+    >
+      {/* 统一卡片头部：类型标签 | 标题+元数据 | 操作按钮 */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '14px 20px',
+          borderBottom: '1px solid var(--dae-border)',
+          background: '#fff',
+          flexShrink: 0,
+        }}
+      >
+        {/* 左侧：类型标签 */}
+        <span
+          className="dae-tag"
+          style={{
+            background: 'var(--dae-primary-light)',
+            color: 'var(--dae-primary)',
+            flexShrink: 0,
+          }}
+        >
+          {assetTypeLabel[selected.type]}
+        </span>
+
+        {/* 中间：图标 + 标题 + 元数据 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          <MetaIcon size={18} style={{ color: 'var(--dae-primary)', flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--dae-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {selected.name}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--dae-ink-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {selected.type === 'chart' && `${(extra as ChartItem | null)?.type ?? ''} | ${(extra as ChartItem | null)?.datasetName ?? ''} | 创建人：${(extra as ChartItem | null)?.creator ?? ''}`}
+              {selected.type === 'report' && `数据集：${(extra as Report | null)?.datasetName ?? ''} | 报表 ID：${selected.id}`}
+              {selected.type === 'dashboard' && `共 ${(extra as any)?.charts?.length ?? 0} 个图表 | 创建人：${extra?.creator ?? ''}`}
+              {selected.type === 'screen' && `分辨率：${(extra as any)?.resolution ?? ''} | 创建人：${extra?.creator ?? ''}`}
+            </div>
+          </div>
+        </div>
+
+        {/* 右侧：操作按钮 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <IconAction icon={<Bell size={17} />} label="数据订阅" onClick={onSubscribe} />
+          <IconAction
+            icon={exporting ? <Clock size={17} /> : <FileImage size={17} />}
+            label={exporting ? '导出中...' : '图片导出'}
+            onClick={exporting ? undefined : handleExportImage}
+          />
+          <IconAction
+            icon={isFav ? <Star size={17} style={{ color: '#f59e0b', fill: '#f59e0b' }} /> : <StarOff size={17} />}
+            label={isFav ? '取消收藏' : '收藏'}
+            onClick={() => onToggleFav(favKey)}
+          />
+        </div>
+      </div>
+
+      {/* 卡片主体内容区 */}
+      <div
+        style={{
+          flex: 1, minHeight: 0, overflow: 'auto',
+          background: 'var(--dae-surface)',
+        }}
+        className="dae-scroll"
+      >
+        {!permission.view ? (
+          <PermissionDenied asset={selected} onApply={onApply} />
+        ) : (
+          <>
+            {selected.type === 'report' && <ReportContent reportId={selected.id} />}
+            {selected.type === 'chart' && <ChartContent chartId={selected.id} compact />}
+            {selected.type === 'dashboard' && <DashboardContent dashboardId={selected.id} compact />}
+            {selected.type === 'screen' && <ScreenContent screenId={selected.id} />}
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /* ==================== 主页面 ==================== */
 
+function findAssetById(type: AssetType, id: string): TreeItem | null {
+  if (type === 'chart') {
+    const c = charts.find((item) => item.id === id);
+    return c ? { id: c.id, name: c.name, type: 'chart' } : null;
+  }
+  if (type === 'report') {
+    const r = reports.find((item) => item.id === id);
+    return r ? { id: r.id, name: r.name, type: 'report' } : null;
+  }
+  if (type === 'dashboard') {
+    const d = dashboards.find((item) => item.id === id);
+    return d ? { id: d.id, name: d.name, type: 'dashboard' } : null;
+  }
+  if (type === 'screen') {
+    const s = dataScreens.find((item) => item.id === id);
+    return s ? { id: s.id, name: s.name, type: 'screen' } : null;
+  }
+  return null;
+}
+
 export default function PortalPage() {
+  const { currentUser: user } = useAuth();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<TreeItem | null>(null);
+  const [activeTab, setActiveTab] = useState<AssetType>('chart');
+  const [subscribeOpen, setSubscribeOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
+  const { favorites, toggle } = useFavorites();
+
+  // 从 hash 参数恢复选中的资产（支持从个人工作台跳转过来）
+  useEffect(() => {
+    const params = parseHashParams(window.location.hash);
+    const assetType = params.assetType as AssetType | undefined;
+    const assetId = params.assetId;
+    if (assetType && assetId) {
+      const asset = findAssetById(assetType, assetId);
+      if (asset) {
+        setSelected(asset);
+        setActiveTab(assetType);
+      }
+    }
+  }, []);
 
   const groups: TreeGroup[] = useMemo(() => [
     {
@@ -737,20 +1421,38 @@ export default function PortalPage() {
   ], []);
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      {/* 左侧目录树 */}
+    <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', padding: 10, gap: 0 }}>
       <DirectoryTree
         groups={groups}
         selectedId={selected?.id || null}
         onSelect={setSelected}
         search={search}
         onSearchChange={setSearch}
+        favorites={favorites}
+        activeTab={activeTab}
+        onActiveTabChange={setActiveTab}
       />
 
-      {/* 右侧内容区 */}
-      <div style={{ flex: 1, overflow: 'hidden', padding: 20, background: 'var(--dae-surface)' }}>
-        <ContentRenderer selected={selected} />
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: 'var(--dae-surface)', borderRadius: '0 var(--dae-radius-lg) var(--dae-radius-lg) 0', border: '1px solid var(--dae-border)', borderLeft: 'none', boxSizing: 'border-box' }}>
+        <ContentRenderer
+          selected={selected}
+          favorites={favorites}
+          onToggleFav={toggle}
+          onSubscribe={() => setSubscribeOpen(true)}
+          onApply={() => setApplyOpen(true)}
+        />
       </div>
+
+      <SubscribeDrawer
+        open={subscribeOpen}
+        asset={selected}
+        onClose={() => setSubscribeOpen(false)}
+      />
+      <ApplyPermissionModal
+        open={applyOpen}
+        asset={selected}
+        onClose={() => setApplyOpen(false)}
+      />
     </div>
   );
 }

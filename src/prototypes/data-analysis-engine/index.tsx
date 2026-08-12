@@ -5,6 +5,7 @@
 import React from 'react';
 import { defineHashPageRoute, useHashPage } from '../../common/useHashPage';
 import Layout, { type PageId } from './components/Layout';
+import PersonalWorkbenchPage from './pages/PersonalWorkbenchPage';
 import PortalPage from './pages/PortalPage';
 import DatasourcePage from './pages/DatasourcePage';
 import DatasetPage from './pages/dataset';
@@ -26,13 +27,18 @@ import UserManagePage from './pages/UserManagePage';
 import RoleManagePage from './pages/RoleManagePage';
 import OperationLogPage from './pages/OperationLogPage';
 import TenantManagePage from './pages/TenantManagePage';
-import MetricsPage from './pages/MetricsPage';
+import MetricsTaskPage from './pages/MetricsTaskPage';
+import MetricsAlertPage from './pages/MetricsAlertPage';
+import MetricsPushPage from './pages/MetricsPushPage';
+import SubscribeApprovePage from './pages/SubscribeApprovePage';
+import ApproveAssigneePage from './pages/ApproveAssigneePage';
 import { AuthProvider } from './contexts/AuthContext';
 import './style.css';
 import { AnnotationViewer, type AnnotationSourceDocument } from '@axhub/annotation';
 import annotationSourceDocument from './annotation-source.json';
 
 const pageMap: Record<string, React.ComponentType> = {
+  'personal-workbench': PersonalWorkbenchPage,
   portal: PortalPage,
   datasource: DatasourcePage,
   dataset: DatasetPage,
@@ -54,11 +60,16 @@ const pageMap: Record<string, React.ComponentType> = {
   'role-manage': RoleManagePage,
   'operation-log': OperationLogPage,
   'tenant-manage': TenantManagePage,
-  metrics: MetricsPage,
+  'metrics-task': MetricsTaskPage,
+  'metrics-alert': MetricsAlertPage,
+  'metrics-push': MetricsPushPage,
+  'subscribe-approve': SubscribeApprovePage,
+  'approve-assignee': ApproveAssigneePage,
 };
 
 const route = defineHashPageRoute(
   [
+    { id: 'personal-workbench', title: '个人工作台' },
     { id: 'portal', title: '数据门户' },
     { id: 'datasource', title: '数据源' },
     { id: 'dataset', title: '数据集' },
@@ -77,9 +88,13 @@ const route = defineHashPageRoute(
     { id: 'data-screen-preview', title: '数据大屏预览' },
     { id: 'user-manage', title: '用户管理' },
     { id: 'role-manage', title: '角色管理' },
-    { id: 'metrics', title: '指标监控' },
+    { id: 'metrics-task', title: '监控任务' },
+    { id: 'metrics-alert', title: '预警记录' },
+    { id: 'metrics-push', title: '推送规则' },
     { id: 'operation-log', title: '操作日志' },
     { id: 'tenant-manage', title: '租户管理' },
+    { id: 'subscribe-approve', title: '任务审核' },
+    { id: 'approve-assignee', title: '审核人配置' },
   ],
   { defaultPageId: 'portal' },
 );

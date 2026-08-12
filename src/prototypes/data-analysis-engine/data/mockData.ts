@@ -1181,20 +1181,39 @@ export function getCurrentUserTenants(user: UserItem = currentUser): TenantItem[
   return tenants.filter((t) => ids.has(t.id));
 }
 
+/** 检查当前用户对某个数据门户资源的查看权限 */
+export function getAssetPermission(
+  user: UserItem,
+  assetType: 'chart' | 'report' | 'dashboard' | 'screen',
+  assetId: string
+): { view: boolean; manage: boolean } {
+  if (user.isSuperAdmin) return { view: true, manage: true };
+  const resourceType: ResourcePermissionType =
+    assetType === 'screen' ? 'datascreen' : assetType;
+  const perm = user.resourcePermissions?.find(
+    (p) => p.resourceType === resourceType && p.resourceId === assetId
+  );
+  if (perm) return { view: perm.view, manage: perm.manage };
+  // 无显式权限记录时默认不可见
+  return { view: false, manage: false };
+}
+
 // ==================== 指标监控 ====================
 export interface MetricData {
   label: string;
   value: string;
-  change: number;
-  unit: string;
+  change?: number;
+  unit?: string;
+  /** 自定义趋势文案，优先级高于 change 自动计算 */
+  trendText?: string;
 }
 
-export const metricsData: MetricData[] = [
-  { label: '数据源连接数', value: '24', change: 4.2, unit: '个' },
-  { label: '查询 QPS', value: '1,280', change: 12.5, unit: '次/秒' },
-  { label: '图表渲染耗时', value: '145', change: -8.3, unit: 'ms' },
-  { label: '活跃用户数', value: '86', change: 6.7, unit: '人' },
-];
+/** 从日期字串中提取「年-月」，兼容 2026-08-01 与 2026/8/12 两种格式 */
+export function getYearMonth(dateStr: string): string {
+  const m = dateStr.match(/(\d{4})\D+(\d{1,2})/);
+  if (!m) return '';
+  return `${m[1]}-${m[2].padStart(2, '0')}`;
+}
 
 export const qpsTrend = [
   { time: '00:00', qps: 420 },
@@ -1210,6 +1229,324 @@ export const qpsTrend = [
   { time: '20:00', qps: 760 },
   { time: '22:00', qps: 540 },
 ];
+
+// ==================== 监控告警 ====================
+
+export type MonitorResourceType = 'chart' | 'dashboard' | 'report' | 'screen';
+export type MonitorTaskStatus = 'running' | 'paused' | 'disabled';
+export type PushChannel = 'email' | 'message' | 'wecom';
+export type MonitorAlertStatus = 'pending' | 'processed';
+
+export interface MonitorRule {
+  operator: '>' | '<' | '>=' | '<=' | '=' | '!=';
+  threshold: number;
+}
+
+export type MonitorCombineType = 'and' | 'or';
+
+export interface MonitorTask {
+  id: string;
+  name: string;
+  resourceType: MonitorResourceType;
+  resourceId: string;
+  resourceName: string;
+  datasetName: string;
+  metricNames: string[];
+  dimensionName: string;
+  metricRules: Record<string, MonitorRule>;
+  combineType: MonitorCombineType;
+  pushRuleId: string;
+  status: MonitorTaskStatus;
+  creator: string;
+  createdAt: string;
+  updatedAt: string;
+  description?: string;
+}
+
+export interface MonitorAlert {
+  id: string;
+  taskId: string;
+  taskName: string;
+  resourceType: MonitorResourceType;
+  resourceName: string;
+  metricName: string;
+  dimensionName: string;
+  dimensionValue: string;
+  actualValue: number;
+  threshold: number;
+  operator: string;
+  triggeredAt: string;
+  status: MonitorAlertStatus;
+  pushStatus: 'success' | 'failed' | 'pending';
+  pushChannel: PushChannel;
+  receiver: string;
+}
+
+export interface PushRule {
+  id: string;
+  name: string;
+  channel: PushChannel;
+  receiver: string;
+  cc?: string;
+  enabled: boolean;
+  creator: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const resourceTypeLabel: Record<MonitorResourceType, string> = {
+  chart: '图表',
+  dashboard: '仪表盘',
+  report: '报表',
+  screen: '数据大屏',
+};
+
+export const pushChannelLabel: Record<PushChannel, string> = {
+  email: '邮件',
+  message: '站内信',
+  wecom: '企业微信',
+};
+
+export const monitorTasks: MonitorTask[] = [
+  {
+    id: 'MT001',
+    name: '月度营销报表销售额监控',
+    resourceType: 'report',
+    resourceId: 'RP001',
+    resourceName: '销售日报',
+    datasetName: '订单明细数据集',
+    metricNames: ['订单金额'],
+    dimensionName: '省份',
+    metricRules: { 订单金额: { operator: '<', threshold: 500000 } },
+    combineType: 'and',
+    pushRuleId: 'PR001',
+    status: 'running',
+    creator: '张三',
+    createdAt: '2026-08-01 10:00',
+    updatedAt: '2026-08-11 09:30',
+    description: '监控全国各省份月度销售额，低于 50 万时发送预警。',
+  },
+  {
+    id: 'MT002',
+    name: '运营核心指标仪表盘监控',
+    resourceType: 'dashboard',
+    resourceId: 'DB001',
+    resourceName: '运营核心指标',
+    datasetName: '订单明细数据集',
+    metricNames: ['订单金额', '订单数量'],
+    dimensionName: '订单日期',
+    metricRules: {
+      订单金额: { operator: '<', threshold: 100000 },
+      订单数量: { operator: '<', threshold: 500 },
+    },
+    combineType: 'or',
+    pushRuleId: 'PR002',
+    status: 'running',
+    creator: '李四',
+    createdAt: '2026-08-02 14:20',
+    updatedAt: '2026-08-10 16:45',
+    description: '监控运营核心指标仪表盘日销售额或订单量波动。',
+  },
+  {
+    id: 'MT003',
+    name: '品类销售占比图表监控',
+    resourceType: 'chart',
+    resourceId: 'CH002',
+    resourceName: '品类销售占比',
+    datasetName: '订单明细数据集',
+    metricNames: ['订单金额'],
+    dimensionName: '商品品类',
+    metricRules: { 订单金额: { operator: '<', threshold: 200000 } },
+    combineType: 'and',
+    pushRuleId: 'PR001',
+    status: 'paused',
+    creator: '王五',
+    createdAt: '2026-08-05 11:10',
+    updatedAt: '2026-08-09 10:20',
+  },
+  {
+    id: 'MT004',
+    name: '实时流量监控大屏监控',
+    resourceType: 'screen',
+    resourceId: 'SC001',
+    resourceName: '实时销售大屏',
+    datasetName: '访问日志数据集',
+    metricNames: ['访问用户数'],
+    dimensionName: '省份',
+    metricRules: { 访问用户数: { operator: '<', threshold: 5000 } },
+    combineType: 'and',
+    pushRuleId: 'PR003',
+    status: 'disabled',
+    creator: '赵六',
+    createdAt: '2026-07-28 09:00',
+    updatedAt: '2026-08-01 12:00',
+  },
+];
+
+export const monitorAlerts: MonitorAlert[] = [
+  {
+    id: 'MA001',
+    taskId: 'MT001',
+    taskName: '月度营销报表销售额监控',
+    resourceType: 'report',
+    resourceName: '销售日报',
+    metricName: '订单金额',
+    dimensionName: '省份',
+    dimensionValue: '青海省',
+    actualValue: 420000,
+    threshold: 500000,
+    operator: '<',
+    triggeredAt: '2026-08-11 08:30',
+    status: 'pending',
+    pushStatus: 'success',
+    pushChannel: 'email',
+    receiver: 'zhangsan@company.com',
+  },
+  {
+    id: 'MA002',
+    taskId: 'MT001',
+    taskName: '月度营销报表销售额监控',
+    resourceType: 'report',
+    resourceName: '销售日报',
+    metricName: '订单金额',
+    dimensionName: '省份',
+    dimensionValue: '宁夏回族自治区',
+    actualValue: 380000,
+    threshold: 500000,
+    operator: '<',
+    triggeredAt: '2026-08-11 09:00',
+    status: 'pending',
+    pushStatus: 'success',
+    pushChannel: 'email',
+    receiver: 'zhangsan@company.com',
+  },
+  {
+    id: 'MA003',
+    taskId: 'MT002',
+    taskName: '运营核心指标仪表盘监控',
+    resourceType: 'dashboard',
+    resourceName: '运营核心指标',
+    metricName: '订单金额',
+    dimensionName: '订单日期',
+    dimensionValue: '2026-08-10',
+    actualValue: 85000,
+    threshold: 100000,
+    operator: '<',
+    triggeredAt: '2026-08-10 23:50',
+    status: 'processed',
+    pushStatus: 'success',
+    pushChannel: 'message',
+    receiver: 'lisi@company.com',
+  },
+  {
+    id: 'MA004',
+    taskId: 'MT003',
+    taskName: '品类销售占比图表监控',
+    resourceType: 'chart',
+    resourceName: '品类销售占比',
+    metricName: '订单金额',
+    dimensionName: '商品品类',
+    dimensionValue: '家居用品',
+    actualValue: 150000,
+    threshold: 200000,
+    operator: '<',
+    triggeredAt: '2026-08-09 14:20',
+    status: 'processed',
+    pushStatus: 'failed',
+    pushChannel: 'email',
+    receiver: 'wangwu@company.com',
+  },
+  {
+    id: 'MA005',
+    taskId: 'MT001',
+    taskName: '月度营销报表销售额监控',
+    resourceType: 'report',
+    resourceName: '销售日报',
+    metricName: '订单金额',
+    dimensionName: '省份',
+    dimensionValue: '西藏自治区',
+    actualValue: 120000,
+    threshold: 500000,
+    operator: '<',
+    triggeredAt: '2026-08-08 10:15',
+    status: 'processed',
+    pushStatus: 'success',
+    pushChannel: 'email',
+    receiver: 'zhangsan@company.com',
+  },
+];
+
+export const pushRules: PushRule[] = [
+  {
+    id: 'PR001',
+    name: '销售团队邮件通知',
+    channel: 'email',
+    receiver: 'sales@company.com',
+    cc: 'manager@company.com',
+    enabled: true,
+    creator: '张三',
+    createdAt: '2026-08-01 10:00',
+    updatedAt: '2026-08-11 09:30',
+  },
+  {
+    id: 'PR002',
+    name: '运营值班站内信',
+    channel: 'message',
+    receiver: 'operation-duty@company.com',
+    enabled: true,
+    creator: '李四',
+    createdAt: '2026-08-02 14:20',
+    updatedAt: '2026-08-10 16:45',
+  },
+  {
+    id: 'PR003',
+    name: '技术值班企业微信',
+    channel: 'wecom',
+    receiver: 'tech-duty-group',
+    enabled: false,
+    creator: '赵六',
+    createdAt: '2026-07-28 09:00',
+    updatedAt: '2026-08-01 12:00',
+  },
+];
+
+/** 根据资源类型与 ID 获取资源名称 */
+export function getMonitorResourceName(type: MonitorResourceType, id: string): string {
+  if (type === 'chart') return charts.find((c) => c.id === id)?.name || id;
+  if (type === 'dashboard') return dashboards.find((d) => d.id === id)?.name || id;
+  if (type === 'report') return reports.find((r) => r.id === id)?.name || id;
+  return dataScreens.find((s) => s.id === id)?.name || id;
+}
+
+/** 获取资源关联的数据集名称列表 */
+export function getResourceDatasets(type: MonitorResourceType, id: string): string[] {
+  if (type === 'chart') {
+    const item = charts.find((c) => c.id === id);
+    return item ? [item.datasetName] : [];
+  }
+  if (type === 'report') {
+    const item = reports.find((r) => r.id === id);
+    return item ? [item.datasetName] : [];
+  }
+  if (type === 'dashboard') {
+    const item = dashboards.find((d) => d.id === id);
+    return item ? Array.from(new Set((item.charts || []).map((c) => c.datasetName))) : [];
+  }
+  if (type === 'screen') {
+    // 数据大屏暂按固定示例数据集返回，实际应由大屏组件配置决定
+    return ['访问日志数据集'];
+  }
+  return [];
+}
+
+/** 获取数据集下的维度与指标字段 */
+export function getDatasetFields(datasetName: string): { dimensions: string[]; metrics: string[] } {
+  const fields = datasetFields[datasetName] || [];
+  return {
+    dimensions: fields.filter((f) => f.type === 'dimension').map((f) => f.name),
+    metrics: fields.filter((f) => f.type === 'metric').map((f) => f.name),
+  };
+}
 
 // ==================== 自助取数 / 数据探查 字段 ====================
 export interface DatasetField {
@@ -1272,3 +1609,220 @@ export const pieSampleData = [
   { name: '家居', value: 15 },
   { name: '其他', value: 5 },
 ];
+
+// ==================== 流程审批：订阅审核 ====================
+export type SubscribeAuditStatus = 'pending' | 'approved' | 'rejected';
+
+export type SubscribeCycle = 'daily' | 'weekly' | 'monthly';
+export const subscribeCycleLabel: Record<SubscribeCycle, string> = {
+  daily: '每天',
+  weekly: '每周',
+  monthly: '每月',
+};
+
+export type SubscribeScope = 'current' | 'full';
+export const subscribeScopeLabel: Record<SubscribeScope, string> = {
+  current: '当前查询条件所见数据',
+  full: '全量数据',
+};
+
+export interface SubscribeAuditRecord {
+  operatorId: string;
+  operatorName: string;
+  action: 'approved' | 'rejected';
+  comment?: string;
+  time: string;
+}
+
+export interface SubscribeApproval {
+  id: string;
+  title: string;
+  applicantId: string;
+  applicantName: string;
+  applicantDept: string;
+  tenantId: string;
+  resourceType: 'chart' | 'dashboard' | 'report' | 'screen';
+  resourceId: string;
+  resourceName: string;
+  cycle: SubscribeCycle;
+  scope: SubscribeScope;
+  channel: PushChannel;
+  receiver: string;
+  reason?: string;
+  status: SubscribeAuditStatus;
+  createdAt: string;
+  auditRecords: SubscribeAuditRecord[];
+}
+
+export const subscribeCycleColor: Record<SubscribeCycle, string> = {
+  daily: '#1677FF',
+  weekly: '#722ED1',
+  monthly: '#13C2C2',
+};
+
+export const subscribeAuditStatusLabel: Record<SubscribeAuditStatus, string> = {
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已驳回',
+};
+
+export const subscribeAuditStatusColor: Record<SubscribeAuditStatus, string> = {
+  pending: 'orange',
+  approved: 'green',
+  rejected: 'red',
+};
+
+let __subscribeSeq = 5;
+export function nextSubscribeId() {
+  return `SUB${String(++__subscribeSeq).padStart(3, '0')}`;
+}
+
+export const initialSubscribeApprovals: SubscribeApproval[] = [
+  {
+    id: 'SUB001',
+    title: '品类销售占比订阅',
+    applicantId: 'U001',
+    applicantName: '张三',
+    applicantDept: '运营部',
+    tenantId: 'T001',
+    resourceType: 'chart',
+    resourceId: 'PA001',
+    resourceName: '品类销售占比',
+    cycle: 'daily',
+    scope: 'full',
+    channel: 'email',
+    receiver: 'zhangsan@company.com',
+    reason: '每天需将销售品类占比同步给运营组，用于日报复盘。',
+    status: 'pending',
+    createdAt: '2026-08-11 09:12',
+    auditRecords: [],
+  },
+  {
+    id: 'SUB002',
+    title: '月度销售趋势订阅',
+    applicantId: 'U005',
+    applicantName: '孙七',
+    applicantDept: '市场部',
+    tenantId: 'T001',
+    resourceType: 'chart',
+    resourceId: 'PA002',
+    resourceName: '月度销售额趋势图',
+    cycle: 'weekly',
+    scope: 'current',
+    channel: 'wecom',
+    receiver: '市场部周报群',
+    reason: '每周一早会前发给市场部，便于业务回顾。',
+    status: 'pending',
+    createdAt: '2026-08-11 10:36',
+    auditRecords: [],
+  },
+  {
+    id: 'SUB003',
+    title: '财务核心指标仪表盘订阅',
+    applicantId: 'U006',
+    applicantName: '周八',
+    applicantDept: '财务部',
+    tenantId: 'T002',
+    resourceType: 'dashboard',
+    resourceId: 'PA006',
+    resourceName: '财务核心指标仪表盘',
+    cycle: 'daily',
+    scope: 'full',
+    channel: 'email',
+    receiver: 'zhouba@company.com',
+    status: 'approved',
+    createdAt: '2026-08-10 14:20',
+    auditRecords: [
+      {
+        operatorId: 'U002',
+        operatorName: '李四',
+        action: 'approved',
+        comment: '财务日常需要，已通过。',
+        time: '2026-08-10 15:02',
+      },
+    ],
+  },
+  {
+    id: 'SUB004',
+    title: '用户留存分析报表订阅',
+    applicantId: 'U003',
+    applicantName: '王五',
+    applicantDept: '产品部',
+    tenantId: 'T002',
+    resourceType: 'report',
+    resourceId: 'PA008',
+    resourceName: '用户留存分析报表',
+    cycle: 'monthly',
+    scope: 'full',
+    channel: 'message',
+    receiver: '王五',
+    reason: '月度复盘时使用。',
+    status: 'rejected',
+    createdAt: '2026-08-09 11:05',
+    auditRecords: [
+      {
+        operatorId: 'U002',
+        operatorName: '李四',
+        action: 'rejected',
+        comment: '请改为邮件订阅，避免站内信遗漏。',
+        time: '2026-08-09 14:38',
+      },
+    ],
+  },
+];
+
+/** 运行时订阅审核数据（包含 PortalPage 提交后新增的） */
+export const subscribeApprovals: SubscribeApproval[] = [...initialSubscribeApprovals];
+
+/**
+ * 向订阅审核表中追加一条记录。
+ * PortalPage 提交订阅时会调用此函数，避免重复定义逻辑。
+ */
+export function appendSubscribeApproval(item: SubscribeApproval) {
+  subscribeApprovals.unshift(item);
+}
+
+// ==================== 流程审批：审核人配置 ====================
+export interface ApproveAssigneeConfig {
+  tenantId: string;
+  assigneeIds: string[];
+  updatedAt: string;
+  updatedById: string;
+}
+
+export const approveAssigneeConfigs: ApproveAssigneeConfig[] = [
+  {
+    tenantId: 'T001',
+    assigneeIds: ['U002', 'U004'],
+    updatedAt: '2026-08-08 09:30',
+    updatedById: 'U001',
+  },
+  {
+    tenantId: 'T002',
+    assigneeIds: ['U007'],
+    updatedAt: '2026-08-06 17:12',
+    updatedById: 'U001',
+  },
+  {
+    tenantId: 'T003',
+    assigneeIds: [],
+    updatedAt: '2026-08-05 11:00',
+    updatedById: 'U001',
+  },
+];
+
+/**
+ * 获取指定租户在指定资源类型上的审核人 ID。
+ * 当前阶段对所有资源类型统一配置，后续可按资源类型拆分。
+ */
+export function getApproveAssigneeIds(tenantId: string): string[] {
+  return approveAssigneeConfigs.find((c) => c.tenantId === tenantId)?.assigneeIds || [];
+}
+
+/**
+ * 判断当前用户是否承担指定租户的审核任务。
+ */
+export function isAssigneeOfTenant(userId: string, tenantId: string): boolean {
+  return getApproveAssigneeIds(tenantId).includes(userId);
+}
+

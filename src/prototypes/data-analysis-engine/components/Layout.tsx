@@ -21,10 +21,15 @@ import {
   LogOut,
   User,
   Check,
+  Bell,
+  Send,
+  ClipboardCheck,
+  UserCog,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export type PageId =
+  | 'personal-workbench'
   | 'portal'
   | 'datasource'
   | 'dataset'
@@ -42,7 +47,11 @@ export type PageId =
   | 'role-manage'
   | 'operation-log'
   | 'tenant-manage'
-  | 'metrics';
+  | 'metrics-task'
+  | 'metrics-alert'
+  | 'metrics-push'
+  | 'subscribe-approve'
+  | 'approve-assignee';
 
 interface NavGroup {
   label: string;
@@ -50,6 +59,10 @@ interface NavGroup {
 }
 
 const allNavGroups: NavGroup[] = [
+  {
+    label: '个人工作台',
+    items: [{ id: 'personal-workbench', label: '个人工作台', icon: User }],
+  },
   {
     label: '数据门户',
     items: [{ id: 'portal', label: '数据门户', icon: LayoutDashboard }],
@@ -83,7 +96,18 @@ const allNavGroups: NavGroup[] = [
   },
   {
     label: '监控告警',
-    items: [{ id: 'metrics', label: '指标监控', icon: Activity }],
+    items: [
+      { id: 'metrics-task', label: '监控任务', icon: Activity },
+      { id: 'metrics-alert', label: '预警记录', icon: Bell },
+      { id: 'metrics-push', label: '推送规则', icon: Send },
+    ],
+  },
+  {
+    label: '流程审批',
+    items: [
+      { id: 'subscribe-approve', label: '任务审核', icon: ClipboardCheck },
+      { id: 'approve-assignee', label: '审核人配置', icon: UserCog },
+    ],
   },
 ];
 
@@ -117,7 +141,7 @@ export default function Layout({ activePage, onNavigate, children }: LayoutProps
   };
 
   return (
-    <div className="dae-page" style={{ display: 'flex', height: '100vh', background: '#f8fafc' }}>
+    <div className="dae-page" style={{ position: 'fixed', inset: 0, display: 'flex', background: '#f8fafc' }}>
       <aside className={`dae-sidebar dae-scroll ${collapsed ? 'collapsed' : ''}`}>
         <div className="dae-sidebar-header">
           <div className="dae-logo-icon">
@@ -162,7 +186,7 @@ export default function Layout({ activePage, onNavigate, children }: LayoutProps
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
-            padding: '0 24px',
+            padding: '0 18px',
             gap: 20,
           }}
         >
@@ -315,7 +339,7 @@ export default function Layout({ activePage, onNavigate, children }: LayoutProps
         </header>
 
         <div style={{ flex: 1, overflow: 'auto' }} className="dae-scroll">
-          <div style={{ padding: '24px 28px', minHeight: '100%' }}>{children}</div>
+          <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>{children}</div>
         </div>
       </main>
     </div>

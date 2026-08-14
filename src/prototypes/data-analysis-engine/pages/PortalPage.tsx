@@ -677,8 +677,8 @@ function DashboardContent({
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, maxWidth: 1100, margin: '0 auto' }}>
-            {chartsList.map((chart) => {
-              const type = chart.type === 'table' ? 'bar' : chart.type;
+            {chartsList.filter((chart) => ['bar', 'line', 'area', 'pie', 'table'].includes(chart.type)).map((chart) => {
+              const type = chart.type === 'table' ? 'bar' : chart.type as 'bar' | 'line' | 'area' | 'pie';
               const isPie = type === 'pie';
               return (
                 <div
@@ -731,8 +731,8 @@ function DashboardContent({
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-          {chartsList.map((chart) => {
-            const type = chart.type === 'table' ? 'bar' : chart.type;
+          {chartsList.filter((chart) => ['bar', 'line', 'area', 'pie', 'table'].includes(chart.type)).map((chart) => {
+            const type = chart.type === 'table' ? 'bar' : chart.type as 'bar' | 'line' | 'area' | 'pie';
             const isPie = type === 'pie';
             return (
               <div

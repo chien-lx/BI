@@ -117,7 +117,7 @@ export function resolveMakeServerStartCommand(
       label: 'local @axhub/make dev',
     };
   }
-  const args = ['@axhub/make', projectRoot];
+  const args = ['@axhub/make', '--dev'];
   if (runtimeOrigin) {
     args.push('--runtime-origin', runtimeOrigin);
   }

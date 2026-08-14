@@ -176,17 +176,21 @@ export const charts: ChartItem[] = [
 ];
 
 // ==================== 仪表盘 ====================
+export type DashboardComponentType = 'bar' | 'line' | 'area' | 'pie' | 'table' | 'query' | 'richText' | 'media' | 'tab' | 'insight' | 'reuse';
+
 export interface DashboardChart {
   id: string;
   name: string;
-  type: 'bar' | 'line' | 'area' | 'pie' | 'table';
-  datasetName: string;
-  dimensions: string[];
-  metrics: string[];
+  type: DashboardComponentType;
+  datasetName?: string;
+  dimensions?: string[];
+  metrics?: string[];
   x?: number;
   y?: number;
   w?: number;
   h?: number;
+  /** 非图表组件的自定义配置 */
+  config?: Record<string, any>;
 }
 
 export interface DashboardItem {
@@ -1530,7 +1534,7 @@ export function getResourceDatasets(type: MonitorResourceType, id: string): stri
   }
   if (type === 'dashboard') {
     const item = dashboards.find((d) => d.id === id);
-    return item ? Array.from(new Set((item.charts || []).map((c) => c.datasetName))) : [];
+    return item ? Array.from(new Set((item.charts || []).map((c) => c.datasetName).filter((n): n is string => !!n))) : [];
   }
   if (type === 'screen') {
     // 数据大屏暂按固定示例数据集返回，实际应由大屏组件配置决定

@@ -1,9 +1,22 @@
 import React from 'react';
-import { ArrowLeft, BarChart3 } from 'lucide-react';
+import { ArrowLeft, BarChart3, Search, FileText, MonitorPlay, PanelsTopLeft, Sparkles, Copy } from 'lucide-react';
 import PageHeader from '../../../components/PageHeader';
 import ChartRenderer from '../../../components/ChartRenderer';
 import { dashboards, chartSampleData, pieSampleData } from '../../../data/mockData';
 import { useHashParams } from '@/common/useHashParams';
+
+const CHART_TYPES = ['bar', 'line', 'area', 'pie', 'table'];
+
+function isChartType(type: string) {
+  return CHART_TYPES.includes(type);
+}
+
+function getComponentIcon(type: string) {
+  const map: Record<string, React.ElementType> = {
+    query: Search, richText: FileText, media: MonitorPlay, tab: PanelsTopLeft, insight: Sparkles, reuse: Copy,
+  };
+  return map[type] || BarChart3;
+}
 
 export default function DashboardPreviewPage() {
   const hashParams = useHashParams();
@@ -59,37 +72,52 @@ export default function DashboardPreviewPage() {
               boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
             }}
           >
-            {charts.map((chart) => (
-              <div
-                key={chart.id}
-                style={{
-                  position: 'absolute',
-                  left: chart.x || 0,
-                  top: chart.y || 0,
-                  width: chart.w || 376,
-                  height: chart.h || 280,
-                  border: '1px solid var(--dae-border)',
-                  borderRadius: 'var(--dae-radius-lg)',
-                  background: '#fff',
-                  padding: 16,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 12 }}>
-                  {chart.name}
+            {charts.map((chart) => {
+              const Icon = getComponentIcon(chart.type);
+              return (
+                <div
+                  key={chart.id}
+                  style={{
+                    position: 'absolute',
+                    left: chart.x || 0,
+                    top: chart.y || 0,
+                    width: chart.w || 376,
+                    height: chart.h || 280,
+                    border: '1px solid var(--dae-border)',
+                    borderRadius: 'var(--dae-radius-lg)',
+                    background: '#fff',
+                    padding: 16,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Icon size={16} style={{ color: 'var(--dae-primary)' }} />
+                    {chart.name}
+                  </div>
+                  <div style={{ flex: 1, minHeight: 0 }}>
+                    {isChartType(chart.type) ? (
+                      <ChartRenderer
+                        type={chart.type === 'table' ? 'bar' : chart.type as any}
+                        data={chart.type === 'pie' ? pieSampleData : chartSampleData}
+                        yKeys={chart.type === 'pie' ? undefined : ['value', 'value2']}
+                        height={Math.max(120, (chart.h || 280) - 90)}
+                      />
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--dae-ink-muted)', fontSize: 13 }}>
+                        {chart.type === 'query' ? '查询组件（预览模式）' :
+                         chart.type === 'richText' ? (chart.config?.content || '富文本内容') :
+                         chart.type === 'media' ? (chart.config?.url ? '媒体内容' : '未配置媒体') :
+                         chart.type === 'tab' ? 'Tab 容器' :
+                         chart.type === 'insight' ? '智能解读内容' :
+                         chart.type === 'reuse' ? `引用：${chart.config?.sourceName || ''}` : '组件'}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div style={{ flex: 1, minHeight: 0 }}>
-                  <ChartRenderer
-                    type={chart.type === 'table' ? 'bar' : chart.type}
-                    data={chart.type === 'pie' ? pieSampleData : chartSampleData}
-                    yKeys={chart.type === 'pie' ? undefined : ['value', 'value2']}
-                    height={Math.max(120, (chart.h || 280) - 90)}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

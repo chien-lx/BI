@@ -318,8 +318,8 @@ function CompactDashboardPreview({ dashboardId }: { dashboardId: string }) {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-          {list.slice(0, 6).map((chart) => {
-            const type = chart.type === 'table' ? 'bar' : chart.type;
+          {list.filter((chart) => ['bar', 'line', 'area', 'pie', 'table'].includes(chart.type)).slice(0, 6).map((chart) => {
+            const type = chart.type === 'table' ? 'bar' : chart.type as 'bar' | 'line' | 'area' | 'pie';
             const isPie = type === 'pie';
             return (
               <div

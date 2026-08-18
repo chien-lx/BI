@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { ClipboardList, Download, Eye, FileSpreadsheet, Folder, Search, X } from 'lucide-react';
+import { ClipboardList, Download, Eye, FileSpreadsheet, Folder, Search, X, Link2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import Drawer from '../components/Drawer';
 import IconAction from '../components/IconAction';
 import DatePicker from '../components/DatePicker';
+import { useHashPage } from '../../../common/useHashPage';
 import { operationLogs, menuTree, type OperationLog, type OperationActionType } from '../data/mockData';
 import * as XLSX from 'xlsx';
 
@@ -44,6 +45,16 @@ const actionTypeBadgeClass = (type: OperationActionType) => {
 
 const formatJson = (value: unknown) => JSON.stringify(value, null, 2);
 
+/** 资产类型简称（关联资产列展示用） */
+const assetTypeShort: Record<string, string> = {
+  chart: '图表',
+  report: '报表',
+  dashboard: '仪表盘',
+  screen: '大屏',
+  dataset: '数据集',
+  datasource: '数据源',
+};
+
 /** 每个菜单可执行的操作类型（操作类型枚举与具体菜单对齐） */
 const menuActionTypeMap: Record<string, OperationActionType[]> = {
   'data-portal': ['login', 'other'],
@@ -63,6 +74,7 @@ const menuActionTypeMap: Record<string, OperationActionType[]> = {
 };
 
 export default function OperationLogPage() {
+  const { params, setPage } = useHashPage('operation-log');
   const [userName, setUserName] = useState('');
   const [account, setAccount] = useState('');
   const [actionType, setActionType] = useState<OperationActionType | ''>('');
@@ -71,8 +83,13 @@ export default function OperationLogPage() {
   const [selectedMenuId, setSelectedMenuId] = useState<string>('');
   const [detailLog, setDetailLog] = useState<OperationLog | null>(null);
 
+  // 从门户「操作记录」按钮跳转过来时，按资产精确筛选（溯源）
+  const assetFilterId = params.assetId || '';
+  const assetFilterName = params.assetName || '';
+
   const filtered = useMemo(() => {
     return operationLogs.filter((item) => {
+      if (assetFilterId && item.assetId !== assetFilterId) return false;
       if (selectedMenuId && item.menuId !== selectedMenuId) return false;
       if (userName && !item.user.includes(userName)) return false;
       if (account && !item.account.toLowerCase().includes(account.toLowerCase())) return false;
@@ -81,7 +98,7 @@ export default function OperationLogPage() {
       if (endTime && item.time > `${endTime} 23:59:59`) return false;
       return true;
     });
-  }, [userName, account, actionType, startTime, endTime, selectedMenuId]);
+  }, [userName, account, actionType, startTime, endTime, selectedMenuId, assetFilterId]);
 
   const availableActionTypes = useMemo(() => {
     const set = new Set<OperationActionType>();
@@ -135,6 +152,24 @@ export default function OperationLogPage() {
           </button>
         }
       />
+
+      {assetFilterId && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, background: 'var(--dae-primary-light)',
+            border: '1px solid var(--dae-primary-light)', borderRadius: 10, padding: '10px 16px',
+          }}
+        >
+          <Link2 size={16} style={{ color: 'var(--dae-primary)' }} />
+          <span style={{ fontSize: 13, color: 'var(--dae-ink)' }}>
+            已按资产筛选：<strong>{assetFilterName || assetFilterId}</strong>（共 {filtered.length} 条记录）
+          </span>
+          <button className="dae-btn dae-btn-secondary" style={{ marginLeft: 'auto', padding: '4px 12px' }} onClick={() => setPage('operation-log')}>
+            <X size={14} style={{ marginRight: 4, verticalAlign: '-2px' }} />
+            清除筛选
+          </button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
         {/* 左侧菜单目录树 */}
@@ -326,8 +361,9 @@ export default function OperationLogPage() {
                   <th>账号</th>
                   <th>模块</th>
                   <th>操作</th>
-                  <th>详情</th>
-                  <th>IP 地址</th>
+                <th>详情</th>
+                <th>关联资产</th>
+                <th>IP 地址</th>
                   <th>时间</th>
                   <th style={{ width: 90 }}>操作</th>
                 </tr>
@@ -349,6 +385,20 @@ export default function OperationLogPage() {
                       <span className={`dae-tag ${actionTypeBadgeClass(item.actionType)}`}>{item.action}</span>
                     </td>
                     <td>{item.detail}</td>
+                    <td>
+                      {item.assetId ? (
+                        <button
+                          onClick={() => setPage('portal', { assetId: item.assetId!, assetType: item.assetType || '' })}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', color: 'var(--dae-primary)', cursor: 'pointer', fontSize: 13, padding: 0 }}
+                          title="跳转到该资产"
+                        >
+                          <Link2 size={13} />
+                          {item.assetType ? assetTypeShort[item.assetType] : '资产'} {item.assetId}
+                        </button>
+                      ) : (
+                        <span style={{ color: 'var(--dae-ink-muted)' }}>—</span>
+                      )}
+                    </td>
                     <td>{item.ip}</td>
                     <td>{item.time}</td>
                     <td>

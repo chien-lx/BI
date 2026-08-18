@@ -8,7 +8,7 @@ import IconAction from '../components/IconAction';
 import DeleteConfirm from '../components/DeleteConfirm';
 import UserPermSelect from '../components/UserPermSelect';
 import StatusSwitch from '../components/StatusSwitch';
-import { dataScreens, type DataScreenItem } from '../data/mockData';
+import { dataScreens, setAssetStatus, appendOperationLog, nextOperationLogId, currentUser, type DataScreenItem } from '../data/mockData';
 
 export default function DataScreenPage() {
   const [search, setSearch] = useState('');
@@ -69,13 +69,25 @@ export default function DataScreenPage() {
   };
 
   const toggleStatus = (item: DataScreenItem) => {
+    const newStatus = item.status === 'online' ? 'offline' : 'online';
+    setAssetStatus('screen', item.id, newStatus);
     setItems((prev) =>
-      prev.map((i) =>
-        i.id === item.id
-          ? { ...i, status: i.status === 'online' ? 'offline' : 'online' }
-          : i
-      )
+      prev.map((i) => (i.id === item.id ? { ...i, status: newStatus } : i))
     );
+    appendOperationLog({
+      id: nextOperationLogId(),
+      user: currentUser.name,
+      account: currentUser.email,
+      module: '数据大屏',
+      menuId: 'data-screen',
+      action: newStatus === 'online' ? '上线' : '下线',
+      actionType: 'publish',
+      detail: `将数据大屏「${item.name}」${newStatus === 'online' ? '上线' : '下线'}`,
+      assetId: item.id,
+      assetType: 'screen',
+      ip: '192.168.1.100',
+      time: new Date().toISOString().slice(0, 16).replace('T', ' '),
+    });
   };
 
   const openCopy = (item: DataScreenItem) => {

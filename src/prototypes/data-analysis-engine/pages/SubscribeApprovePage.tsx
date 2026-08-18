@@ -22,7 +22,10 @@ import Drawer from '../components/Drawer';
 import ChartRenderer from '../components/ChartRenderer';
 import IconAction from '../components/IconAction';
 import {
-  subscribeApprovals,
+  getSubscribeApprovals,
+  saveSubscribeApprovals,
+  appendOperationLog,
+  nextOperationLogId,
   tenants,
   users,
   resourceTypeLabel,
@@ -81,8 +84,8 @@ export default function SubscribeApprovePage() {
   const [detail, setDetail] = useState<SubscribeApproval | null>(null);
   const [rejectTarget, setRejectTarget] = useState<SubscribeApproval | null>(null);
   const [rejectComment, setRejectComment] = useState('');
-  // 用本地 state 接管 mock 列表，便于触发刷新
-  const [items, setItems] = useState<SubscribeApproval[]>(subscribeApprovals);
+  // 用本地 state 接管 mock 列表（与数据门户、个人工作台共享同一份 localStorage 数据），便于触发刷新
+  const [items, setItems] = useState<SubscribeApproval[]>(getSubscribeApprovals());
 
   const tenantName = (id: string) => tenants.find((t) => t.id === id)?.name || id;
   const userName = (id: string) => users.find((u) => u.id === id)?.name || id;
@@ -144,8 +147,8 @@ export default function SubscribeApprovePage() {
 
   const applyAudit = (ids: string[], action: 'approved' | 'rejected', comment?: string) => {
     const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    setItems((prev) =>
-      prev.map((it) => {
+    setItems((prev) => {
+      const next = prev.map((it) => {
         if (!ids.includes(it.id)) return it;
         if (it.status !== 'pending') return it;
         const record = {
@@ -157,11 +160,34 @@ export default function SubscribeApprovePage() {
         };
         return {
           ...it,
-          status: action === 'approved' ? 'approved' : 'rejected',
+          status: (action === 'approved' ? 'approved' : 'rejected') as SubscribeApproval['status'],
           auditRecords: [...it.auditRecords, record],
         };
-      })
-    );
+      });
+      // 持久化，确保审核结果同步到个人工作台的订阅任务
+      saveSubscribeApprovals(next);
+      return next;
+    });
+    // 记录操作日志（溯源）：对每条从待审核变为已处理的申请写日志
+    ids.forEach((id) => {
+      const it = items.find((x) => x.id === id);
+      if (it && it.status === 'pending') {
+        appendOperationLog({
+          id: nextOperationLogId(),
+          user: currentUser.name,
+          account: currentUser.email,
+          module: '任务审核',
+          menuId: 'subscribe-approve',
+          action: action === 'approved' ? '审批通过' : '审批驳回',
+          actionType: 'update',
+          detail: `订阅申请「${it.resourceName}」${action === 'approved' ? '已通过' : '已驳回'}`,
+          assetId: it.resourceId,
+          assetType: it.resourceType as 'chart' | 'report' | 'dashboard' | 'screen',
+          ip: '192.168.1.100',
+          time: now,
+        });
+      }
+    });
     setSelectedIds([]);
     setRejectTarget(null);
     setRejectComment('');

@@ -25,10 +25,12 @@ import {
   Send,
   ClipboardCheck,
   UserCog,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export type PageId =
+  | 'login'
   | 'personal-workbench'
   | 'portal'
   | 'datasource'
@@ -51,7 +53,8 @@ export type PageId =
   | 'metrics-alert'
   | 'metrics-push'
   | 'subscribe-approve'
-  | 'approve-assignee';
+  | 'approve-assignee'
+  | 'permission-approve';
 
 interface NavGroup {
   label: string;
@@ -107,6 +110,7 @@ const allNavGroups: NavGroup[] = [
     items: [
       { id: 'subscribe-approve', label: '任务审核', icon: ClipboardCheck },
       { id: 'approve-assignee', label: '审核人配置', icon: UserCog },
+      { id: 'permission-approve', label: '权限审核', icon: ShieldCheck },
     ],
   },
 ];

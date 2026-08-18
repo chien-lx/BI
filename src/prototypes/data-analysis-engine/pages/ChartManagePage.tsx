@@ -9,7 +9,7 @@ import DeleteConfirm from '../components/DeleteConfirm';
 import UserPermSelect from '../components/UserPermSelect';
 import StatusSwitch from '../components/StatusSwitch';
 import ChartRenderer from '../components/ChartRenderer';
-import { charts, type ChartItem, chartSampleData, pieSampleData } from '../data/mockData';
+import { charts, setAssetStatus, appendOperationLog, nextOperationLogId, currentUser, type ChartItem, chartSampleData, pieSampleData } from '../data/mockData';
 import { useNavigate } from '../../../common/useNavigate';
 
 export default function ChartManagePage() {
@@ -87,13 +87,26 @@ export default function ChartManagePage() {
   };
 
   const toggleStatus = (item: ChartItem) => {
+    const newStatus = item.status === 'online' ? 'offline' : 'online';
+    // 同步到共享数据，保证数据门户能看到最新上线状态
+    setAssetStatus('chart', item.id, newStatus);
     setItems((prev) =>
-      prev.map((i) =>
-        i.id === item.id
-          ? { ...i, status: i.status === 'online' ? 'offline' : 'online' }
-          : i
-      )
+      prev.map((i) => (i.id === item.id ? { ...i, status: newStatus } : i))
     );
+    appendOperationLog({
+      id: nextOperationLogId(),
+      user: currentUser.name,
+      account: currentUser.email,
+      module: '图表管理',
+      menuId: 'chart',
+      action: newStatus === 'online' ? '上线' : '下线',
+      actionType: 'publish',
+      detail: `将图表「${item.name}」${newStatus === 'online' ? '上线' : '下线'}`,
+      assetId: item.id,
+      assetType: 'chart',
+      ip: '192.168.1.100',
+      time: new Date().toISOString().slice(0, 16).replace('T', ' '),
+    });
   };
 
   const openCopy = (item: ChartItem) => {

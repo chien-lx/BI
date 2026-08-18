@@ -2,7 +2,7 @@
  * @name 数据分析引擎系统
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { defineHashPageRoute, useHashPage } from '../../common/useHashPage';
 import Layout, { type PageId } from './components/Layout';
 import PersonalWorkbenchPage from './pages/PersonalWorkbenchPage';
@@ -32,12 +32,15 @@ import MetricsAlertPage from './pages/MetricsAlertPage';
 import MetricsPushPage from './pages/MetricsPushPage';
 import SubscribeApprovePage from './pages/SubscribeApprovePage';
 import ApproveAssigneePage from './pages/ApproveAssigneePage';
-import { AuthProvider } from './contexts/AuthContext';
+import PermissionApprovePage from './pages/PermissionApprovePage';
+import LoginPage from './pages/LoginPage';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import './style.css';
 import { AnnotationViewer, type AnnotationSourceDocument } from '@axhub/annotation';
 import annotationSourceDocument from './annotation-source.json';
 
 const pageMap: Record<string, React.ComponentType> = {
+  login: LoginPage,
   'personal-workbench': PersonalWorkbenchPage,
   portal: PortalPage,
   datasource: DatasourcePage,
@@ -65,10 +68,12 @@ const pageMap: Record<string, React.ComponentType> = {
   'metrics-push': MetricsPushPage,
   'subscribe-approve': SubscribeApprovePage,
   'approve-assignee': ApproveAssigneePage,
+  'permission-approve': PermissionApprovePage,
 };
 
 const route = defineHashPageRoute(
   [
+    { id: 'login', title: '登录' },
     { id: 'personal-workbench', title: '个人工作台' },
     { id: 'portal', title: '数据门户' },
     { id: 'datasource', title: '数据源' },
@@ -95,12 +100,44 @@ const route = defineHashPageRoute(
     { id: 'tenant-manage', title: '租户管理' },
     { id: 'subscribe-approve', title: '任务审核' },
     { id: 'approve-assignee', title: '审核人配置' },
+    { id: 'permission-approve', title: '权限审核' },
   ],
   { defaultPageId: 'portal' },
 );
 
 export default function DataAnalysisEngine() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
+  );
+}
+
+function AppShell() {
+  const { loggedIn, logout } = useAuth();
   const { page, setPage } = useHashPage(route);
+
+  // 登录后默认进入个人工作台（防止直接访问 #page=login 等越权入口）
+  useEffect(() => {
+    if (loggedIn && page === 'login') {
+      setPage('personal-workbench');
+    }
+  }, [loggedIn, page, setPage]);
+
+  const handleNavigate = (p: string) => {
+    if (p === 'login' && loggedIn) {
+      logout();
+      setPage('login');
+      return;
+    }
+    setPage(p);
+  };
+
+  // 未登录：强制进入登录页（演示环境用账号密码登录）
+  if (!loggedIn) {
+    return <LoginPage onLoginSuccess={() => setPage('personal-workbench')} />;
+  }
+
   const activePage = page || 'portal';
   const PageComponent = pageMap[activePage] || PortalPage;
 
@@ -124,10 +161,8 @@ export default function DataAnalysisEngine() {
 
   if (isFullScreenPage) {
     return (
-      <AuthProvider>
-        <div className="dae-page" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <PageComponent />
-        </div>
+      <div className="dae-page" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <PageComponent />
         <AnnotationViewer
           source={annotationSourceDocument as unknown as AnnotationSourceDocument}
           options={{
@@ -139,15 +174,13 @@ export default function DataAnalysisEngine() {
             emptyWhenNoData: true,
           }}
         />
-      </AuthProvider>
+      </div>
     );
   }
 
   return (
-    <AuthProvider>
-      <Layout activePage={layoutActivePage as PageId} onNavigate={(p) => setPage(p)}>
-        <PageComponent />
-      </Layout>
-    </AuthProvider>
+    <Layout activePage={layoutActivePage as PageId} onNavigate={handleNavigate}>
+      <PageComponent />
+    </Layout>
   );
 }

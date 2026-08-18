@@ -8,7 +8,7 @@ import IconAction from '../components/IconAction';
 import DeleteConfirm from '../components/DeleteConfirm';
 import UserPermSelect from '../components/UserPermSelect';
 import StatusSwitch from '../components/StatusSwitch';
-import { dashboards, type DashboardItem } from '../data/mockData';
+import { dashboards, setAssetStatus, appendOperationLog, nextOperationLogId, currentUser, type DashboardItem } from '../data/mockData';
 
 export default function DashboardPage() {
   const [search, setSearch] = useState('');
@@ -66,13 +66,25 @@ export default function DashboardPage() {
   };
 
   const toggleStatus = (item: DashboardItem) => {
+    const newStatus = item.status === 'online' ? 'offline' : 'online';
+    setAssetStatus('dashboard', item.id, newStatus);
     setItems((prev) =>
-      prev.map((i) =>
-        i.id === item.id
-          ? { ...i, status: i.status === 'online' ? 'offline' : 'online' }
-          : i
-      )
+      prev.map((i) => (i.id === item.id ? { ...i, status: newStatus } : i))
     );
+    appendOperationLog({
+      id: nextOperationLogId(),
+      user: currentUser.name,
+      account: currentUser.email,
+      module: '仪表盘',
+      menuId: 'dashboard',
+      action: newStatus === 'online' ? '上线' : '下线',
+      actionType: 'publish',
+      detail: `将仪表盘「${item.name}」${newStatus === 'online' ? '上线' : '下线'}`,
+      assetId: item.id,
+      assetType: 'dashboard',
+      ip: '192.168.1.100',
+      time: new Date().toISOString().slice(0, 16).replace('T', ' '),
+    });
   };
 
   const openCopy = (item: DashboardItem) => {

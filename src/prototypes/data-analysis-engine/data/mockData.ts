@@ -545,6 +545,16 @@ export const resourcePermissionGroups: { key: ResourcePermissionType; label: str
   { key: 'datascreen', label: '数据大屏', items: dataScreens.slice(0, 5).map((d) => ({ id: d.id, name: d.name })) },
 ];
 
+/** 演示用：R001 角色默认拥有全部资产权限，但以下资产被显式拒绝查看，
+ * 用于验证「无权限 → 申请权限 → 审批通过」的完整流程。
+ */
+const deniedAssetIdsForDemo = new Set([
+  'CH004', 'CH009',           // 图表：用户留存漏斗、营销渠道转化率
+  'RP002', 'RP020',           // 报表：用户增长周报、地理区域销售热力图
+  'DB002', 'DB009',           // 仪表盘：销售作战室、风控驾驶舱
+  'SC002', 'SC005',           // 数据大屏：双11作战指挥屏、城市交通指挥屏
+]);
+
 function buildResourcePermissions(roleId: string): ResourcePermission[] {
   const perms: ResourcePermission[] = [];
   resourcePermissionGroups.forEach((group) => {
@@ -552,7 +562,7 @@ function buildResourcePermissions(roleId: string): ResourcePermission[] {
       let view = false;
       let manage = false;
       if (roleId === 'R001') {
-        view = true;
+        view = !deniedAssetIdsForDemo.has(item.id);
         manage = true;
       } else if (roleId === 'R002') {
         if (['dataset', 'chart', 'report', 'dashboard'].includes(group.key)) {
@@ -900,6 +910,9 @@ export const menuToResourceType: Record<string, ResourcePermissionType | null> =
 // ==================== 操作日志 ====================
 export type OperationActionType = 'create' | 'update' | 'delete' | 'publish' | 'download' | 'export' | 'login' | 'other';
 
+/** 资产类型（用于操作日志溯源与权限申请关联资产） */
+export type AssetType = 'chart' | 'report' | 'dashboard' | 'screen' | 'dataset' | 'datasource';
+
 export interface OperationLog {
   id: string;
   user: string;
@@ -913,9 +926,13 @@ export interface OperationLog {
   after?: Record<string, unknown> | null;
   ip: string;
   time: string;
+  /** 关联资产 ID（溯源用，仅演示过程产生的日志会带，历史种子日志为空） */
+  assetId?: string;
+  /** 关联资产类型 */
+  assetType?: AssetType;
 }
 
-export const operationLogs: OperationLog[] = [
+const seedOperationLogs: OperationLog[] = [
   {
     id: 'L001',
     user: '张三',
@@ -1086,6 +1103,45 @@ export const operationLogs: OperationLog[] = [
   },
 ];
 
+/* ==================== 操作日志：动态记录 + localStorage 持久化（溯源） ==================== */
+
+const OP_LOG_KEY = 'dae-operation-logs';
+
+function loadOperationLogs(): OperationLog[] | null {
+  try {
+    const raw = localStorage.getItem(OP_LOG_KEY);
+    return raw ? (JSON.parse(raw) as OperationLog[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 运行时操作日志（含演示过程中产生的真实操作）。
+ * 优先从本地存储恢复，保证「溯源」链路可跨刷新延续；首次加载使用种子数据。
+ */
+export const operationLogs: OperationLog[] = loadOperationLogs() ?? seedOperationLogs;
+
+/** 追加一条操作日志（演示动作实时写入，用于操作日志溯源） */
+export function appendOperationLog(log: OperationLog) {
+  operationLogs.unshift(log);
+  try {
+    localStorage.setItem(OP_LOG_KEY, JSON.stringify(operationLogs));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 生成下一条操作日志 ID */
+let opLogSeq = operationLogs.reduce((max, l) => {
+  const n = Number(String(l.id).replace(/[^0-9]/g, ''));
+  return Number.isFinite(n) ? Math.max(max, n) : max;
+}, 0);
+export function nextOperationLogId(): string {
+  opLogSeq += 1;
+  return `L${String(opLogSeq).padStart(3, '0')}`;
+}
+
 // ==================== 租户管理 ====================
 export interface TenantItem {
   id: string;
@@ -1185,21 +1241,58 @@ export function getCurrentUserTenants(user: UserItem = currentUser): TenantItem[
   return tenants.filter((t) => ids.has(t.id));
 }
 
-/** 检查当前用户对某个数据门户资源的查看权限 */
+/** 检查当前用户对某个数据门户资源的查看权限。
+ * 优先级：显式 resourcePermissions > 已审批申请/分享 > 超管默认全开 > 默认不可见。
+ * 显式权限记录可以覆盖超管默认权限，便于演示「无权限资产申请流程」。
+ */
 export function getAssetPermission(
   user: UserItem,
   assetType: 'chart' | 'report' | 'dashboard' | 'screen',
   assetId: string
 ): { view: boolean; manage: boolean } {
-  if (user.isSuperAdmin) return { view: true, manage: true };
   const resourceType: ResourcePermissionType =
     assetType === 'screen' ? 'datascreen' : assetType;
   const perm = user.resourcePermissions?.find(
     (p) => p.resourceType === resourceType && p.resourceId === assetId
   );
+  // 显式授权/拒绝优先（含 R001 演示用的 deniedAssetIdsForDemo）
   if (perm) return { view: perm.view, manage: perm.manage };
-  // 无显式权限记录时默认不可见
+  // 检查已审批的权限申请（apply/share）
+  const apps = getPermissionApplications();
+  const approvedApp = apps.find((app) => {
+    if (app.assetType !== assetType || app.assetId !== assetId) return false;
+    if (app.status !== 'approved') return false;
+    if (app.source === 'apply') return app.applicantId === user.id;
+    if (app.source === 'share') return app.targetUserIds.includes(user.id);
+    return false;
+  });
+  if (approvedApp) {
+    return {
+      view: true,
+      manage: approvedApp.permission === 'manage',
+    };
+  }
+  // 无显式记录时，超管默认拥有全部权限
+  if (user.isSuperAdmin) return { view: true, manage: true };
+  // 默认不可见
   return { view: false, manage: false };
+}
+
+/** 获取当前用户对某条资产的权限申请状态（用于门户交互提示） */
+export function getAssetPermissionApplyStatus(
+  user: UserItem,
+  assetType: 'chart' | 'report' | 'dashboard' | 'screen',
+  assetId: string,
+): 'none' | 'pending' | 'approved' | 'rejected' {
+  const apps = getPermissionApplications().filter((app) => {
+    if (app.assetType !== assetType || app.assetId !== assetId) return false;
+    if (app.source === 'apply') return app.applicantId === user.id;
+    if (app.source === 'share') return app.targetUserIds.includes(user.id);
+    return false;
+  });
+  // 存在多条时以最新（createdAt 字典序）为准
+  apps.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
+  return apps[0]?.status ?? 'none';
 }
 
 // ==================== 指标监控 ====================
@@ -1784,6 +1877,211 @@ export const subscribeApprovals: SubscribeApproval[] = [...initialSubscribeAppro
  */
 export function appendSubscribeApproval(item: SubscribeApproval) {
   subscribeApprovals.unshift(item);
+  saveSubscribeApprovals(subscribeApprovals);
+}
+
+/* ==================== 订阅审核：localStorage 持久化（门户↔审批↔个人工作台 共享） ==================== */
+
+const SUBSCRIBE_STORE_KEY = 'dae-subscribe-approvals';
+
+/** 读取订阅审核列表（优先本地存储，保证门户提交、审批结果、个人工作台订阅任务三处一致） */
+export function getSubscribeApprovals(): SubscribeApproval[] {
+  try {
+    const raw = localStorage.getItem(SUBSCRIBE_STORE_KEY);
+    if (raw) return JSON.parse(raw) as SubscribeApproval[];
+  } catch {
+    /* ignore */
+  }
+  return subscribeApprovals;
+}
+
+/** 覆盖写入订阅审核列表 */
+export function saveSubscribeApprovals(list: SubscribeApproval[]) {
+  try {
+    localStorage.setItem(SUBSCRIBE_STORE_KEY, JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
+}
+
+/* ==================== 资产上线状态：门户与管理页共享同一份数据 ==================== */
+
+/**
+ * 同步资产的上线状态到共享 mock 数组。
+ * 各管理页（图表 / 报表 / 仪表盘 / 大屏）的上线 toggle 默认只改本地 state，
+ * 调用此函数可让数据门户实时读到最新上线状态，保证「上线 → 门户可见」闭环。
+ */
+export function setAssetStatus(
+  assetType: 'chart' | 'report' | 'dashboard' | 'screen',
+  id: string,
+  status: 'online' | 'offline' | 'pending'
+) {
+  const arr = (
+    assetType === 'chart'
+      ? charts
+      : assetType === 'report'
+      ? reports
+      : assetType === 'dashboard'
+      ? dashboards
+      : dataScreens
+  ) as { id: string; status: 'online' | 'offline' | 'pending' }[];
+  const target = arr.find((i) => i.id === id);
+  if (target) target.status = status;
+}
+
+/* ==================== 权限申请 / 分享：localStorage 持久化（门户 ↔ 权限审核 共享） ==================== */
+
+export type PermissionApplySource = 'apply' | 'share';
+export type PermissionApplyStatus = 'pending' | 'approved' | 'rejected';
+export type AssetPermissionLevel = 'view' | 'manage';
+
+export interface PermissionApplicationAuditRecord {
+  operatorId: string;
+  operatorName: string;
+  action: 'approved' | 'rejected';
+  comment?: string;
+  time: string;
+}
+
+export interface PermissionApplication {
+  id: string;
+  /** apply=用户申请查看权限（拉）；share=资产拥有者主动分享（推） */
+  source: PermissionApplySource;
+  assetId: string;
+  assetType: 'chart' | 'report' | 'dashboard' | 'screen';
+  assetName: string;
+  /** 申请人 / 分享人 */
+  applicantId: string;
+  applicantName: string;
+  /** 分享对象用户 ID（仅 share 模式有效） */
+  targetUserIds: string[];
+  permission: AssetPermissionLevel;
+  reason?: string;
+  status: PermissionApplyStatus;
+  createdAt: string;
+  auditRecords: PermissionApplicationAuditRecord[];
+}
+
+const initialPermissionApplications: PermissionApplication[] = [
+  {
+    id: 'PA-20260812-001',
+    source: 'apply',
+    assetId: 'CH001',
+    assetType: 'chart',
+    assetName: '月度销售额趋势',
+    applicantId: 'U003',
+    applicantName: '王五',
+    targetUserIds: [],
+    permission: 'view',
+    reason: '月度经营分析需要查看该图表',
+    status: 'pending',
+    createdAt: '2026-08-12 10:24',
+    auditRecords: [],
+  },
+  {
+    id: 'PA-20260811-002',
+    source: 'share',
+    assetId: 'DASH002',
+    assetType: 'dashboard',
+    assetName: '运营核心指标',
+    applicantId: 'U001',
+    applicantName: '张三',
+    targetUserIds: ['U004', 'U005'],
+    permission: 'view',
+    reason: '同步给运营组同学查看',
+    status: 'approved',
+    createdAt: '2026-08-11 15:40',
+    auditRecords: [
+      { operatorId: 'U002', operatorName: '李四', action: 'approved', time: '2026-08-11 17:02' },
+    ],
+  },
+];
+
+/** 运行时权限申请列表（含门户提交后新增的） */
+export const permissionApplications: PermissionApplication[] = [...initialPermissionApplications];
+
+const PERMISSION_STORE_KEY = 'dae-permission-applications';
+
+/** 读取权限申请列表（优先本地存储，保证门户提交与权限审核页一致） */
+export function getPermissionApplications(): PermissionApplication[] {
+  try {
+    const raw = localStorage.getItem(PERMISSION_STORE_KEY);
+    if (raw) return JSON.parse(raw) as PermissionApplication[];
+  } catch {
+    /* ignore */
+  }
+  return permissionApplications;
+}
+
+/** 覆盖写入权限申请列表 */
+export function savePermissionApplications(list: PermissionApplication[]) {
+  try {
+    localStorage.setItem(PERMISSION_STORE_KEY, JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 向权限申请表中追加一条记录（门户提交申请/分享时调用） */
+export function appendPermissionApplication(item: PermissionApplication) {
+  permissionApplications.unshift(item);
+  savePermissionApplications(permissionApplications);
+}
+
+let permApplySeq = 0;
+/** 生成权限申请 ID（按当天日期序号） */
+export function nextPermissionApplyId(): string {
+  permApplySeq += 1;
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  const date = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+  return `PA-${date}-${String(permApplySeq).padStart(3, '0')}`;
+}
+
+/* ==================== 最近浏览：localStorage 记录（数据门户 → 个人工作台） ==================== */
+
+export interface RecentViewRecord {
+  assetType: 'chart' | 'report' | 'dashboard' | 'screen';
+  assetId: string;
+  assetName: string;
+  viewedAt: string;
+}
+
+const RECENT_VIEWS_KEY = 'dae-recent-views';
+
+function nowStr() {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** 记录一次资产查看，去重并保留最近 30 条 */
+export function recordRecentView(
+  assetType: 'chart' | 'report' | 'dashboard' | 'screen',
+  assetId: string,
+  assetName: string,
+) {
+  try {
+    const raw = localStorage.getItem(RECENT_VIEWS_KEY);
+    const list: RecentViewRecord[] = raw ? (JSON.parse(raw) as RecentViewRecord[]) : [];
+    const next = [
+      { assetType, assetId, assetName, viewedAt: nowStr() },
+      ...list.filter((r) => !(r.assetType === assetType && r.assetId === assetId)),
+    ].slice(0, 30);
+    localStorage.setItem(RECENT_VIEWS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 读取最近浏览记录 */
+export function getRecentViews(): RecentViewRecord[] {
+  try {
+    const raw = localStorage.getItem(RECENT_VIEWS_KEY);
+    return raw ? (JSON.parse(raw) as RecentViewRecord[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 // ==================== 流程审批：审核人配置 ====================

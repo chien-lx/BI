@@ -15,6 +15,7 @@ import {
   RefreshCw,
   History,
   Table2,
+  ShieldCheck,
 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import SearchFilter from '../components/SearchFilter';
@@ -28,6 +29,11 @@ import {
   dataScreens,
   chartSampleData,
   pieSampleData,
+  getRecentViews,
+  getSubscribeApprovals,
+  getPermissionApplications,
+  currentUser,
+  type PermissionApplication,
 } from '../data/mockData';
 
 /* ==================== 类型定义 ==================== */
@@ -139,6 +145,75 @@ const recentViews: RecentView[] = [
   { id: 'RV004', assetType: 'screen', assetName: '618 大促实时大屏', viewedAt: '2026-08-11 09:15' },
   { id: 'RV005', assetType: 'chart', assetName: '品类销售占比', viewedAt: '2026-08-10 16:20' },
 ];
+
+/** 合并「数据门户真实浏览记录」与种子数据，避免重复 */
+function buildRecentViews(): RecentView[] {
+  const stored = getRecentViews();
+  const storedMapped: RecentView[] = stored.map((r) => ({
+    id: r.assetId,
+    assetType: r.assetType,
+    assetName: r.assetName,
+    viewedAt: r.viewedAt,
+  }));
+  const seed = recentViews.filter((rv) => !storedMapped.some((s) => s.assetName === rv.assetName));
+  return [...storedMapped, ...seed];
+}
+
+/** 根据订阅周期计算下次执行时间（演示用） */
+function nextRunFromCycle(cycle: SubscriptionCycle): string {
+  const d = new Date();
+  if (cycle === 'daily') d.setDate(d.getDate() + 1);
+  else if (cycle === 'weekly') d.setDate(d.getDate() + 7);
+  else d.setMonth(d.getDate() === 0 ? d.getMonth() + 2 : d.getMonth() + 1);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} 08:00`;
+}
+
+/**
+ * 合并「个人工作台订阅任务（种子）」与「数据门户提交且已审核通过的订阅」。
+ * 仅追加门户新建的订阅（id 晚于 SUB005），避免与两套种子数据冲突；
+ * 待审核的显示为「已暂停 / 待生效」，审核通过后显示为「运行中」。
+ */
+function buildSubscriptions(): SubscriptionTask[] {
+  const created = getSubscribeApprovals()
+    .filter((s) => s.id.localeCompare('SUB005') > 0 && (s.status === 'approved' || s.status === 'pending'))
+    .map<SubscriptionTask>((s) => ({
+      id: s.id,
+      name: s.title,
+      resourceType: s.resourceType,
+      resourceName: s.resourceName,
+      cycle: s.cycle,
+      nextRunAt: s.status === 'approved' ? nextRunFromCycle(s.cycle) : '待审核通过后生效',
+      lastRunAt: s.createdAt,
+      status: s.status === 'approved' ? 'running' : 'paused',
+    }));
+  const seed = subscriptionTasks.filter((t) => !created.some((c) => c.id === t.id));
+  return [...seed, ...created];
+}
+
+/** 触发一次示例 CSV 下载，便于演示「下载数据」动作 */
+function triggerCsvDownload(resourceName: string, subscriptionName: string) {
+  const rows = [
+    ['日期', '指标', '数值', '环比'],
+    ['2026-08-11', resourceName, '128,400', '+12.4%'],
+    ['2026-08-12', resourceName, '142,860', '+11.2%'],
+    ['2026-08-13', resourceName, '151,230', '+5.9%'],
+  ];
+  const csv = rows.map((r) => r.join(',')).join('\n');
+  try {
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${resourceName}_${subscriptionName || '订阅'}_${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch {
+    /* ignore */
+  }
+}
 
 /* ==================== 收藏状态（复用数据门户的 localStorage key） ==================== */
 
@@ -591,8 +666,8 @@ function FavoritesSection({ search }: { search: string }) {
   );
 }
 
-function SubscriptionsSection({ search }: { search: string }) {
-  const [items, setItems] = useState(subscriptionTasks);
+function SubscriptionsSection({ search, onDownload }: { search: string; onDownload: (task: SubscriptionTask) => void }) {
+  const [items, setItems] = useState<SubscriptionTask[]>(buildSubscriptions);
   const [detailTask, setDetailTask] = useState<SubscriptionTask | null>(null);
 
   const filtered = useMemo(() => {
@@ -667,7 +742,7 @@ function SubscriptionsSection({ search }: { search: string }) {
                       label={s.status === 'running' ? '暂停' : '启用'}
                       onClick={() => toggleStatus(s.id)}
                     />
-                    <IconAction icon={<Download size={16} />} label="下载最新数据" onClick={() => {}} />
+                    <IconAction icon={<Download size={16} />} label="下载最新数据" onClick={() => onDownload(s)} />
                   </div>
                 </td>
               </tr>
@@ -716,17 +791,15 @@ function SubscriptionsSection({ search }: { search: string }) {
   );
 }
 
-function DownloadsSection({ search }: { search: string }) {
-  const [items, setItems] = useState(downloadRecords);
-
+function DownloadsSection({ search, downloads, onDeleteDownload }: { search: string; downloads: DownloadRecord[]; onDeleteDownload: (id: string) => void }) {
   const filtered = useMemo(() => {
-    return items.filter((d) =>
+    return downloads.filter((d) =>
       d.fileName.toLowerCase().includes(search.toLowerCase()) ||
       d.resourceName.toLowerCase().includes(search.toLowerCase())
     );
-  }, [items, search]);
+  }, [downloads, search]);
 
-  const remove = (id: string) => setItems((prev) => prev.filter((d) => d.id !== id));
+  const remove = (id: string) => onDeleteDownload(id);
 
   if (filtered.length === 0) {
     return <Empty icon={Download} text="暂无下载记录" />;
@@ -795,7 +868,7 @@ function RecentSection({ search }: { search: string }) {
 
   // 把最近浏览记录映射为 WorkbenchAsset（找不到对应资产的记录保留为 null，用于统计/兜底）
   const matchedAssets = useMemo(() => {
-    return recentViews
+    return buildRecentViews()
       .map((r) => {
         const asset = allAssets.find((a) => a.type === r.assetType && a.name === r.assetName);
         return asset ? { ...asset, viewedAt: r.viewedAt } : null;
@@ -896,20 +969,128 @@ function RecentSection({ search }: { search: string }) {
   );
 }
 
+/* ==================== 我的权限申请 ==================== */
+
+const PERMISSION_STATUS_META: Record<PermissionApplication['status'], { label: string; className: string }> = {
+  pending: { label: '审核中', className: 'dae-tag-orange' },
+  approved: { label: '已通过', className: 'dae-tag-green' },
+  rejected: { label: '已驳回', className: 'dae-tag-red' },
+};
+
+function PermissionsSection({ search, apps }: { search: string; apps: PermissionApplication[] }) {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return apps;
+    return apps.filter(
+      (app) =>
+        app.assetName.toLowerCase().includes(q) ||
+        app.id.toLowerCase().includes(q) ||
+        ASSET_TYPE_META[app.assetType].label.includes(q)
+    );
+  }, [search, apps]);
+
+  if (filtered.length === 0) {
+    return <Empty icon={ShieldCheck} text="暂无权限申请记录" />;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {filtered.map((app) => {
+        const meta = ASSET_TYPE_META[app.assetType];
+        const Icon = meta.icon;
+        const status = PERMISSION_STATUS_META[app.status];
+        return (
+          <div
+            key={app.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              padding: '14px 18px',
+              background: '#fff',
+              border: '1px solid var(--dae-border)',
+              borderRadius: 'var(--dae-radius-lg)',
+            }}
+          >
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 10,
+                background: meta.bg,
+                color: meta.color,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Icon size={22} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--dae-ink)' }}>{app.assetName}</span>
+                <span className={`dae-tag ${status.className}`}>{status.label}</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--dae-ink-muted)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <span>申请单号：{app.id}</span>
+                <span>资产类型：{meta.label}</span>
+                <span>权限：{app.permission === 'manage' ? '管理' : '查看'}</span>
+                <span>申请时间：{app.createdAt}</span>
+              </div>
+              {app.reason && (
+                <div style={{ fontSize: 12, color: 'var(--dae-ink-muted)', marginTop: 6 }}>
+                  申请理由：{app.reason}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ==================== 主页面 ==================== */
 
 export default function PersonalWorkbenchPage() {
-  const [activeTab, setActiveTab] = useState<'favorites' | 'subscriptions' | 'downloads' | 'recent'>('favorites');
+  const [activeTab, setActiveTab] = useState<'favorites' | 'subscriptions' | 'downloads' | 'recent' | 'permissions'>('favorites');
   const [search, setSearch] = useState('');
   const { favorites } = useFavorites();
+  const [downloads, setDownloads] = useState<DownloadRecord[]>(downloadRecords);
 
   const favoriteCount = useMemo(() => Object.values(favorites).filter(Boolean).length, [favorites]);
 
+  const handleDownload = (task: SubscriptionTask) => {
+    const now = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    const createdAt = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+    const record: DownloadRecord = {
+      id: `DL${Date.now().toString().slice(-6)}`,
+      fileName: `${task.resourceName}_${task.name}_${createdAt.replace(/[-: ]/g, '')}.csv`,
+      resourceName: task.resourceName,
+      subscriptionName: task.name,
+      createdAt,
+      size: `${(0.3 + Math.random() * 2).toFixed(1)} MB`,
+      status: 'ready',
+    };
+    setDownloads((prev) => [record, ...prev]);
+    triggerCsvDownload(task.resourceName, task.name);
+  };
+
+  const handleDeleteDownload = (id: string) => setDownloads((prev) => prev.filter((d) => d.id !== id));
+
+  const permissionApps = useMemo(() => {
+    return getPermissionApplications().filter(
+      (app) => app.applicantId === currentUser.id || app.targetUserIds.includes(currentUser.id)
+    );
+  }, []);
+
   const stats = [
     { label: '我的收藏', value: favoriteCount, icon: Star },
-    { label: '订阅任务', value: subscriptionTasks.length, icon: Bell },
-    { label: '可下载数据', value: downloadRecords.filter((d) => d.status === 'ready').length, icon: Download },
-    { label: '最近浏览', value: recentViews.length, icon: Clock },
+    { label: '订阅任务', value: buildSubscriptions().length, icon: Bell },
+    { label: '可下载数据', value: downloads.filter((d) => d.status === 'ready').length, icon: Download },
+    { label: '最近浏览', value: buildRecentViews().length, icon: Clock },
   ];
 
   const tabs: { key: typeof activeTab; label: string; icon: React.ElementType }[] = [
@@ -917,6 +1098,7 @@ export default function PersonalWorkbenchPage() {
     { key: 'subscriptions', label: '我的订阅', icon: Bell },
     { key: 'downloads', label: '下载记录', icon: Download },
     { key: 'recent', label: '最近浏览', icon: History },
+    { key: 'permissions', label: '我的申请', icon: ShieldCheck },
   ];
 
   return (
@@ -952,9 +1134,10 @@ export default function PersonalWorkbenchPage() {
       </div>
 
       {activeTab === 'favorites' && <FavoritesSection search={search} />}
-      {activeTab === 'subscriptions' && <SubscriptionsSection search={search} />}
-      {activeTab === 'downloads' && <DownloadsSection search={search} />}
+      {activeTab === 'subscriptions' && <SubscriptionsSection search={search} onDownload={handleDownload} />}
+      {activeTab === 'downloads' && <DownloadsSection search={search} downloads={downloads} onDeleteDownload={handleDeleteDownload} />}
       {activeTab === 'recent' && <RecentSection search={search} />}
+      {activeTab === 'permissions' && <PermissionsSection search={search} apps={permissionApps} />}
     </div>
   );
 }

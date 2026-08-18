@@ -3,6 +3,7 @@ import {
   FileBarChart, LayoutDashboard, Monitor, FileText,
   Search, BarChart3, Table2, Eye,
   Bell, Download, Star, StarOff, Lock, ShieldCheck, Clock, CalendarDays, FileImage,
+  Send, Share2,
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import ChartRenderer from '../components/ChartRenderer';
@@ -13,11 +14,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { parseHashParams } from '../../../common/useHashPage';
 import {
   charts, reports, dashboards, dataScreens,
-  chartSampleData, pieSampleData, currentUser, getAssetPermission,
-  resourceTypeLabel, pushChannelLabel,
-  appendSubscribeApproval, nextSubscribeId,
+  chartSampleData, pieSampleData, currentUser, getAssetPermission, getAssetPermissionApplyStatus,
+  resourceTypeLabel, pushChannelLabel, subscribeCycleLabel,
+  appendSubscribeApproval, nextSubscribeId, recordRecentView,
+  users, appendPermissionApplication, nextPermissionApplyId,
+  appendOperationLog, nextOperationLogId,
   type SubscribeApproval, type SubscribeCycle, type SubscribeScope,
-  type ChartItem, type Report,
+  type PermissionApplication,
+  type ChartItem, type Report, type UserItem,
 } from '../data/mockData';
 
 /* ==================== 类型定义 ==================== */
@@ -28,6 +32,7 @@ interface TreeItem {
   id: string;
   name: string;
   type: AssetType;
+  status?: 'online' | 'offline' | 'pending';
 }
 
 interface TreeGroup {
@@ -192,6 +197,7 @@ function DirectoryTree({
   favorites,
   activeTab,
   onActiveTabChange,
+  currentUser,
 }: {
   groups: TreeGroup[];
   selectedId: string | null;
@@ -201,6 +207,7 @@ function DirectoryTree({
   favorites: Record<string, boolean>;
   activeTab: AssetType;
   onActiveTabChange: (tab: AssetType) => void;
+  currentUser: UserItem;
 }) {
 
   // 搜索时跨分类过滤；无搜索时只展示当前页签
@@ -361,6 +368,8 @@ function DirectoryTree({
             const isActive = selectedId === item.id;
             const favKey = `${groupKey}:${item.id}`;
             const isFav = favorites[favKey];
+            const permission = getAssetPermission(currentUser, groupKey, item.id);
+            const noView = !permission.view;
             return (
               <button
                 key={item.id}
@@ -371,7 +380,7 @@ function DirectoryTree({
                   gap: 8,
                   padding: '9px 16px',
                   fontSize: 13,
-                  color: isActive ? 'var(--dae-primary)' : 'var(--dae-ink-secondary)',
+                  color: isActive ? 'var(--dae-primary)' : noView ? 'var(--dae-ink-muted)' : 'var(--dae-ink-secondary)',
                   background: isActive ? 'var(--dae-primary-light)' : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
@@ -385,15 +394,35 @@ function DirectoryTree({
                   borderRadius: 'var(--dae-radius-md)',
                   transition: 'background 0.1s ease',
                 }}
-                title={item.name}
+                title={`${item.name}${noView ? '（暂无查看权限，可申请）' : ''}`}
               >
-                {groupKey === 'chart' && <BarChart3 size={14} style={{ flexShrink: 0 }} />}
-                {groupKey === 'report' && <Table2 size={14} style={{ flexShrink: 0 }} />}
-                {groupKey === 'dashboard' && <LayoutDashboard size={14} style={{ flexShrink: 0 }} />}
-                {groupKey === 'screen' && <Monitor size={14} style={{ flexShrink: 0 }} />}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                {groupKey === 'chart' && <BarChart3 size={14} style={{ flexShrink: 0, opacity: noView ? 0.6 : 1 }} />}
+                {groupKey === 'report' && <Table2 size={14} style={{ flexShrink: 0, opacity: noView ? 0.6 : 1 }} />}
+                {groupKey === 'dashboard' && <LayoutDashboard size={14} style={{ flexShrink: 0, opacity: noView ? 0.6 : 1 }} />}
+                {groupKey === 'screen' && <Monitor size={14} style={{ flexShrink: 0, opacity: noView ? 0.6 : 1 }} />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, opacity: noView ? 0.7 : 1 }}>
                   {item.name}
                 </span>
+                {noView && (
+                  <span title="无查看权限" style={{ display: 'inline-flex', flexShrink: 0 }}>
+                    <Lock size={12} style={{ color: 'var(--dae-ink-subtle)' }} />
+                  </span>
+                )}
+                {item.status === 'online' && (
+                  <span style={{ fontSize: 10, lineHeight: 1, padding: '2px 5px', borderRadius: 4, background: '#dcfce7', color: '#16a34a', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    已上线
+                  </span>
+                )}
+                {item.status === 'pending' && (
+                  <span style={{ fontSize: 10, lineHeight: 1, padding: '2px 5px', borderRadius: 4, background: '#f1f5f9', color: '#64748b', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    待上线
+                  </span>
+                )}
+                {item.status === 'offline' && (
+                  <span style={{ fontSize: 10, lineHeight: 1, padding: '2px 5px', borderRadius: 4, background: '#ffedd5', color: '#c2410c', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    已下线
+                  </span>
+                )}
                 {isFav && <Star size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />}
               </button>
             );
@@ -404,56 +433,78 @@ function DirectoryTree({
   );
 }
 
-/* ==================== 权限不足占位 ==================== */
+/* ==================== 无权限安全遮罩（模糊预览 + 申请提示） ==================== */
 
-function PermissionDenied({
+function AssetPermissionOverlay({
   asset,
+  applyStatus,
   onApply,
 }: {
   asset: TreeItem;
+  applyStatus: 'none' | 'pending' | 'approved' | 'rejected';
   onApply: () => void;
 }) {
+  const isPending = applyStatus === 'pending';
+  const isRejected = applyStatus === 'rejected';
   return (
     <div
       style={{
-        height: '100%',
+        position: 'absolute',
+        inset: 0,
+        zIndex: 10,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 16,
-        color: 'var(--dae-ink-muted)',
-        textAlign: 'center',
         padding: 40,
+        textAlign: 'center',
+        background: 'rgba(248, 250, 252, 0.78)',
+        backdropFilter: 'blur(2px)',
       }}
     >
       <div
         style={{
-          width: 80,
-          height: 80,
+          width: 72,
+          height: 72,
           borderRadius: '50%',
-          background: 'var(--dae-surface)',
+          background: '#fff',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Lock size={36} style={{ color: 'var(--dae-ink-subtle)' }} />
+        {isPending ? (
+          <Clock size={28} style={{ color: 'var(--dae-primary)' }} />
+        ) : (
+          <Lock size={28} style={{ color: 'var(--dae-ink-subtle)' }} />
+        )}
       </div>
       <div>
         <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--dae-ink)', marginBottom: 8 }}>
-          暂无「{assetTypeLabel[asset.type]}」查看权限
+          {isPending ? '权限申请审核中' : '暂无查看权限'}
         </div>
         <div style={{ fontSize: 13, color: 'var(--dae-ink-muted)', maxWidth: 420, lineHeight: 1.6 }}>
-          “{asset.name}” 已上线至数据门户，但您当前的角色未被授权查看该数据。
-          <br />
-          系统默认对无权限内容做不可见处理，以避免数据形态泄露；如需访问请提交权限申请。
+          {isPending
+            ? `您已提交对“${asset.name}”的查看申请，审核通过后即可查看完整数据。`
+            : isRejected
+            ? `您对“${asset.name}”的查看申请已被驳回，仍无法查看具体数据，可重新提交申请。`
+            : `“${asset.name}”已上线至数据门户，但您当前未被授权查看具体数据，系统已做安全模糊处理。`}
         </div>
       </div>
-      <button className="dae-btn dae-btn-primary" onClick={onApply}>
-        <ShieldCheck size={16} />
-        申请查看权限
-      </button>
+      {!isPending && (
+        <button className="dae-btn dae-btn-primary" onClick={onApply}>
+          <ShieldCheck size={16} />
+          {isRejected ? '重新申请权限' : '申请查看权限'}
+        </button>
+      )}
+      {isPending && (
+        <div style={{ fontSize: 12, color: 'var(--dae-ink-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Clock size={14} />
+          请等待审核结果
+        </div>
+      )}
     </div>
   );
 }
@@ -931,6 +982,20 @@ function SubscribeDrawer({
       auditRecords: [],
     };
     appendSubscribeApproval(item);
+    appendOperationLog({
+      id: nextOperationLogId(),
+      user: user.name,
+      account: user.email,
+      module: '数据门户',
+      menuId: 'data-portal',
+      action: '提交订阅申请',
+      actionType: 'other',
+      detail: `订阅「${asset.name}」(${resourceTypeLabel[asset.type]})，周期 ${subscribeCycleLabel[cycle]}`,
+      assetId: asset.id,
+      assetType: asset.type,
+      ip: '192.168.1.100',
+      time: item.createdAt,
+    });
     setSubmittedId(id);
   };
 
@@ -1095,19 +1160,56 @@ function ApplyPermissionModal({
   asset: TreeItem | null;
   onClose: () => void;
 }) {
+  const { currentUser: applicant } = useAuth();
   const [level, setLevel] = useState<'view' | 'manage'>('view');
   const [reason, setReason] = useState('');
-  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     if (open) {
       setReason('');
-      setSubmitted(false);
       setLevel('view');
     }
   }, [open]);
 
   if (!asset) return null;
+
+  const handleSubmit = () => {
+    if (!reason.trim()) return;
+    const now = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    const time = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+    const app: PermissionApplication = {
+      id: nextPermissionApplyId(),
+      source: 'apply',
+      assetId: asset.id,
+      assetType: asset.type,
+      assetName: asset.name,
+      applicantId: applicant.id,
+      applicantName: applicant.name,
+      targetUserIds: [],
+      permission: level,
+      reason: reason.trim(),
+      status: 'pending',
+      createdAt: time,
+      auditRecords: [],
+    };
+    appendPermissionApplication(app);
+    appendOperationLog({
+      id: nextOperationLogId(),
+      user: applicant.name,
+      account: applicant.email,
+      module: '数据门户',
+      menuId: 'data-portal',
+      action: '提交权限申请',
+      actionType: 'other',
+      detail: `申请查看「${asset.name}」的${level === 'manage' ? '查看并管理' : '查看'}权限`,
+      assetId: asset.id,
+      assetType: asset.type,
+      ip: '192.168.1.100',
+      time,
+    });
+    onClose();
+  };
 
   return (
     <Modal
@@ -1119,10 +1221,10 @@ function ApplyPermissionModal({
           <button className="dae-btn dae-btn-secondary" onClick={onClose}>取消</button>
           <button
             className="dae-btn dae-btn-primary"
-            onClick={() => setSubmitted(true)}
-            disabled={!reason.trim() || submitted}
+            onClick={handleSubmit}
+            disabled={!reason.trim()}
           >
-            {submitted ? '已提交' : '提交申请'}
+            提交申请
           </button>
         </>
       }
@@ -1170,12 +1272,158 @@ function ApplyPermissionModal({
         <div style={{ fontSize: 12, color: 'var(--dae-ink-muted)', lineHeight: 1.6, background: 'var(--dae-surface)', padding: 10, borderRadius: 'var(--dae-radius-md)' }}>
           <strong>权限策略说明：</strong>数据门户中已上线但您无权限的资产将默认不可见，避免敏感数据形态泄露；审批通过后将按授权级别开放查看或管理。
         </div>
+      </div>
+    </Modal>
+  );
+}
 
-        {submitted && (
-          <div className="dae-tag dae-tag-green" style={{ justifyContent: 'center', padding: '8px 12px' }}>
-            申请已提交，等待租户管理员审批
+/* ==================== 分享资产 Modal ==================== */
+
+function ShareAssetModal({
+  open,
+  asset,
+  onClose,
+}: {
+  open: boolean;
+  asset: TreeItem | null;
+  onClose: () => void;
+}) {
+  const { currentUser: sharer } = useAuth();
+  const [targetUserIds, setTargetUserIds] = useState<string[]>([]);
+  const [permission, setPermission] = useState<'view' | 'manage'>('view');
+  const [reason, setReason] = useState('');
+  const [keyword, setKeyword] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setTargetUserIds([]);
+      setPermission('view');
+      setReason('');
+      setKeyword('');
+    }
+  }, [open]);
+
+  if (!asset) return null;
+
+  const candidates = users.filter(
+    (u) =>
+      u.id !== sharer.id &&
+      u.status === 'active' &&
+      (!keyword ||
+        u.name.toLowerCase().includes(keyword.toLowerCase()) ||
+        u.email.toLowerCase().includes(keyword.toLowerCase()))
+  );
+
+  const toggle = (id: string) =>
+    setTargetUserIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const handleSubmit = () => {
+    if (targetUserIds.length === 0) return;
+    const now = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    const time = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+    const app: PermissionApplication = {
+      id: nextPermissionApplyId(),
+      source: 'share',
+      assetId: asset.id,
+      assetType: asset.type,
+      assetName: asset.name,
+      applicantId: sharer.id,
+      applicantName: sharer.name,
+      targetUserIds,
+      permission,
+      reason: reason.trim() || undefined,
+      status: 'pending',
+      createdAt: time,
+      auditRecords: [],
+    };
+    appendPermissionApplication(app);
+    appendOperationLog({
+      id: nextOperationLogId(),
+      user: sharer.name,
+      account: sharer.email,
+      module: '数据门户',
+      menuId: 'data-portal',
+      action: '分享资产',
+      actionType: 'other',
+      detail: `将「${asset.name}」分享给 ${targetUserIds.length} 位成员（${permission === 'manage' ? '查看并管理' : '查看'}权限）`,
+      assetId: asset.id,
+      assetType: asset.type,
+      ip: '192.168.1.100',
+      time,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="分享资产"
+      onClose={onClose}
+      footer={
+        <>
+          <button className="dae-btn dae-btn-secondary" onClick={onClose}>取消</button>
+          <button
+            className="dae-btn dae-btn-primary"
+            onClick={handleSubmit}
+            disabled={targetUserIds.length === 0}
+          >
+            {targetUserIds.length > 0 ? `分享给 ${targetUserIds.length} 人` : '请选择分享对象'}
+          </button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>分享资产</label>
+          <div className="dae-input" style={{ background: 'var(--dae-surface)', color: 'var(--dae-ink-muted)' }}>
+            {assetTypeLabel[asset.type]}：{asset.name}
           </div>
-        )}
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>分享权限</label>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setPermission('view')} className={permission === 'view' ? 'dae-btn dae-btn-primary' : 'dae-btn dae-btn-secondary'} style={{ flex: 1, justifyContent: 'center' }}>仅查看</button>
+            <button onClick={() => setPermission('manage')} className={permission === 'manage' ? 'dae-btn dae-btn-primary' : 'dae-btn dae-btn-secondary'} style={{ flex: 1, justifyContent: 'center' }}>查看并管理</button>
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>分享对象<span style={{ color: 'var(--dae-ink-muted)', fontWeight: 400 }}>（多选）</span></label>
+          <div style={{ position: 'relative', marginBottom: 10 }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--dae-ink-muted)' }} />
+            <input className="dae-input" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="搜索成员姓名 / 邮箱" style={{ paddingLeft: 30 }} />
+          </div>
+          <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--dae-border)', borderRadius: 8 }} className="dae-scroll">
+            {candidates.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--dae-ink-muted)', fontSize: 13 }}>没有匹配的成员</div>
+            ) : (
+              candidates.map((u) => {
+                const checked = targetUserIds.includes(u.id);
+                return (
+                  <label
+                    key={u.id}
+                    style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--dae-border)', background: checked ? 'var(--dae-primary-light)' : '#fff', cursor: 'pointer' }}
+                    onClick={() => toggle(u.id)}
+                  >
+                    <input type="checkbox" checked={checked} onChange={() => toggle(u.id)} style={{ marginRight: 12 }} />
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--dae-primary-light)', color: 'var(--dae-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, marginRight: 10 }}>{u.name.slice(0, 1)}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 500 }}>{u.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--dae-ink-muted)' }}>{u.department} · {u.role}</div>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6, color: 'var(--dae-ink)' }}>分享说明</label>
+          <textarea className="dae-input" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="选填，说明分享用途" style={{ resize: 'vertical', minHeight: 56 }} />
+        </div>
       </div>
     </Modal>
   );
@@ -1189,12 +1437,14 @@ function ContentRenderer({
   onToggleFav,
   onSubscribe,
   onApply,
+  onShare,
 }: {
   selected: TreeItem | null;
   favorites: Record<string, boolean>;
   onToggleFav: (key: string) => void;
   onSubscribe: () => void;
   onApply: () => void;
+  onShare: () => void;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
@@ -1226,6 +1476,7 @@ function ContentRenderer({
   }
 
   const permission = getAssetPermission(currentUser, selected.type, selected.id);
+  const applyStatus = getAssetPermissionApplyStatus(currentUser, selected.type, selected.id);
   const favKey = `${selected.type}:${selected.id}`;
   const isFav = favorites[favKey];
 
@@ -1322,26 +1573,40 @@ function ContentRenderer({
             label={isFav ? '取消收藏' : '收藏'}
             onClick={() => onToggleFav(favKey)}
           />
+          <IconAction icon={<Share2 size={17} />} label="分享" onClick={onShare} />
         </div>
       </div>
 
       {/* 卡片主体内容区 */}
       <div
         style={{
+          position: 'relative',
           flex: 1, minHeight: 0, overflow: 'auto',
           background: 'var(--dae-surface)',
         }}
         className="dae-scroll"
       >
-        {!permission.view ? (
-          <PermissionDenied asset={selected} onApply={onApply} />
-        ) : (
-          <>
-            {selected.type === 'report' && <ReportContent reportId={selected.id} />}
-            {selected.type === 'chart' && <ChartContent chartId={selected.id} compact />}
-            {selected.type === 'dashboard' && <DashboardContent dashboardId={selected.id} compact />}
-            {selected.type === 'screen' && <ScreenContent screenId={selected.id} />}
-          </>
+        <div
+          style={{
+            filter: permission.view ? undefined : 'blur(8px)',
+            pointerEvents: permission.view ? undefined : 'none',
+            userSelect: permission.view ? undefined : 'none',
+            height: permission.view ? undefined : '100%',
+            minHeight: permission.view ? undefined : '100%',
+            overflow: permission.view ? undefined : 'hidden',
+          }}
+        >
+          {selected.type === 'report' && <ReportContent reportId={selected.id} />}
+          {selected.type === 'chart' && <ChartContent chartId={selected.id} compact />}
+          {selected.type === 'dashboard' && <DashboardContent dashboardId={selected.id} compact />}
+          {selected.type === 'screen' && <ScreenContent screenId={selected.id} />}
+        </div>
+        {!permission.view && (
+          <AssetPermissionOverlay
+            asset={selected}
+            applyStatus={applyStatus}
+            onApply={onApply}
+          />
         )}
       </div>
     </div>
@@ -1377,6 +1642,7 @@ export default function PortalPage() {
   const [activeTab, setActiveTab] = useState<AssetType>('chart');
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [applyOpen, setApplyOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const { favorites, toggle } = useFavorites();
 
   // 从 hash 参数恢复选中的资产（支持从个人工作台跳转过来）
@@ -1389,48 +1655,64 @@ export default function PortalPage() {
       if (asset) {
         setSelected(asset);
         setActiveTab(assetType);
+        recordRecentView(assetType, assetId, asset.name);
       }
     }
   }, []);
+
+  const handleSelect = (item: TreeItem) => {
+    setSelected(item);
+    recordRecentView(item.type, item.id, item.name);
+  };
 
   const groups: TreeGroup[] = useMemo(() => [
     {
       key: 'chart',
       label: '图表',
       icon: FileBarChart,
-      items: charts.slice(0, 8).map((c) => ({ id: c.id, name: c.name, type: 'chart' as AssetType })),
+      items: charts.filter((c) => c.status === 'online').map((c) => ({ id: c.id, name: c.name, type: 'chart' as AssetType, status: c.status })),
     },
     {
       key: 'report',
       label: '报表',
       icon: FileText,
-      items: reports.slice(0, 8).map((r) => ({ id: r.id, name: r.name, type: 'report' as AssetType })),
+      items: reports.filter((r) => r.status === 'online').map((r) => ({ id: r.id, name: r.name, type: 'report' as AssetType, status: r.status })),
     },
     {
       key: 'dashboard',
       label: '仪表盘',
       icon: LayoutDashboard,
-      items: dashboards.slice(0, 8).map((d) => ({ id: d.id, name: d.name, type: 'dashboard' as AssetType })),
+      items: dashboards.filter((d) => d.status === 'online').map((d) => ({ id: d.id, name: d.name, type: 'dashboard' as AssetType, status: d.status })),
     },
     {
       key: 'screen',
       label: '数据大屏',
       icon: Monitor,
-      items: dataScreens.slice(0, 8).map((s) => ({ id: s.id, name: s.name, type: 'screen' as AssetType })),
+      items: dataScreens.filter((s) => s.status === 'online').map((s) => ({ id: s.id, name: s.name, type: 'screen' as AssetType, status: s.status })),
     },
   ], []);
+
+  // 若当前选中资产被过滤掉（如下线），清空选中态
+  useEffect(() => {
+    if (!selected) return;
+    const exists = groups.some((g) => g.items.some((item) => item.id === selected.id && item.type === selected.type));
+    if (!exists) {
+      setSelected(null);
+    }
+  }, [groups, selected]);
 
   return (
     <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden', padding: 10, gap: 0 }}>
       <DirectoryTree
         groups={groups}
         selectedId={selected?.id || null}
-        onSelect={setSelected}
+        onSelect={handleSelect}
         search={search}
         onSearchChange={setSearch}
         favorites={favorites}
         activeTab={activeTab}
         onActiveTabChange={setActiveTab}
+        currentUser={currentUser}
       />
 
       <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', background: 'var(--dae-surface)', borderRadius: '0 var(--dae-radius-lg) var(--dae-radius-lg) 0', border: '1px solid var(--dae-border)', borderLeft: 'none', boxSizing: 'border-box' }}>
@@ -1440,6 +1722,7 @@ export default function PortalPage() {
           onToggleFav={toggle}
           onSubscribe={() => setSubscribeOpen(true)}
           onApply={() => setApplyOpen(true)}
+          onShare={() => setShareOpen(true)}
         />
       </div>
 
@@ -1452,6 +1735,11 @@ export default function PortalPage() {
         open={applyOpen}
         asset={selected}
         onClose={() => setApplyOpen(false)}
+      />
+      <ShareAssetModal
+        open={shareOpen}
+        asset={selected}
+        onClose={() => setShareOpen(false)}
       />
     </div>
   );

@@ -5,7 +5,7 @@ import SearchFilter from '../components/SearchFilter';
 import Drawer from '../components/Drawer';
 import IconAction from '../components/IconAction';
 import DeleteConfirm from '../components/DeleteConfirm';
-import { reports, type Report } from '../data/mockData';
+import { reports, setAssetStatus, appendOperationLog, nextOperationLogId, currentUser, type Report } from '../data/mockData';
 import UserPermSelect from '../components/UserPermSelect';
 import StatusSwitch from '../components/StatusSwitch';
 
@@ -69,7 +69,23 @@ export default function ReportPage() {
   const toggleOnlineStatus = (item: Report) => {
     const newStatus = item.status === 'online' ? 'offline' : 'online';
     if (!window.confirm(`确定要将「${item.name}」${item.status === 'online' ? '下线' : '上线'}吗？`)) return;
+    // 同步到共享数据，保证数据门户能看到最新上线状态
+    setAssetStatus('report', item.id, newStatus);
     setItems(items.map((i) => i.id === item.id ? { ...i, status: newStatus } : i));
+    appendOperationLog({
+      id: nextOperationLogId(),
+      user: currentUser.name,
+      account: currentUser.email,
+      module: '报表',
+      menuId: 'report',
+      action: newStatus === 'online' ? '上线' : '下线',
+      actionType: 'publish',
+      detail: `将报表「${item.name}」${newStatus === 'online' ? '上线' : '下线'}`,
+      assetId: item.id,
+      assetType: 'report',
+      ip: '192.168.1.100',
+      time: new Date().toISOString().slice(0, 16).replace('T', ' '),
+    });
   };
 
   const openEdit = (item: Report) => {

@@ -33,7 +33,12 @@ import MetricsPushPage from './pages/MetricsPushPage';
 import SubscribeApprovePage from './pages/SubscribeApprovePage';
 import ApproveAssigneePage from './pages/ApproveAssigneePage';
 import PermissionApprovePage from './pages/PermissionApprovePage';
+import AssistantAdminPage from './pages/AssistantAdminPage';
+import QueryPage from './pages/QueryPage';
+import SemanticLayerPage from './pages/SemanticLayerPage';
+import QueryLogsPage from './pages/QueryLogsPage';
 import LoginPage from './pages/LoginPage';
+import AIAssistantWidget from './components/AIAssistant/AIAssistantWidget';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import './style.css';
 import { AnnotationViewer, type AnnotationSourceDocument } from '@axhub/annotation';
@@ -69,6 +74,20 @@ const pageMap: Record<string, React.ComponentType> = {
   'subscribe-approve': SubscribeApprovePage,
   'approve-assignee': ApproveAssigneePage,
   'permission-approve': PermissionApprovePage,
+  'assistant-admin': AssistantAdminPage,
+  'query': QueryPage,
+  'ai-knowledge': AssistantAdminPage,
+  'ai-config': AssistantAdminPage,
+  'ai-semantic': SemanticLayerPage,
+  'ai-conv-logs': AssistantAdminPage,
+  'ai-query-logs': QueryLogsPage,
+};
+
+/** AI 中心子菜单 → 管理后台默认 Tab 映射（仅指向 AssistantAdminPage 的子项） */
+const AI_TAB_DEFAULTS: Record<string, string> = {
+  'ai-knowledge': 'docs',
+  'ai-config': 'config',
+  'ai-conv-logs': 'logs',
 };
 
 const route = defineHashPageRoute(
@@ -101,6 +120,13 @@ const route = defineHashPageRoute(
     { id: 'subscribe-approve', title: '任务审核' },
     { id: 'approve-assignee', title: '审核人配置' },
     { id: 'permission-approve', title: '权限审核' },
+    { id: 'assistant-admin', title: 'AI 助手管理' },
+    { id: 'query', title: '智能问数' },
+    { id: 'ai-knowledge', title: '知识库文档' },
+    { id: 'ai-config', title: '参数配置' },
+    { id: 'ai-semantic', title: '语义层 / 行业黑话' },
+    { id: 'ai-conv-logs', title: '对话记录' },
+    { id: 'ai-query-logs', title: '问数记录' },
   ],
   { defaultPageId: 'portal' },
 );
@@ -114,7 +140,7 @@ export default function DataAnalysisEngine() {
 }
 
 function AppShell() {
-  const { loggedIn, logout } = useAuth();
+  const { loggedIn, logout, currentUser } = useAuth();
   const { page, setPage } = useHashPage(route);
 
   // 登录后默认进入个人工作台（防止直接访问 #page=login 等越权入口）
@@ -140,6 +166,7 @@ function AppShell() {
 
   const activePage = page || 'portal';
   const PageComponent = pageMap[activePage] || PortalPage;
+  const adminDefaultTab = AI_TAB_DEFAULTS[activePage];
 
   // 对于二级页面，高亮父级菜单
   const layoutActivePage = activePage.startsWith('dataset-')
@@ -161,26 +188,32 @@ function AppShell() {
 
   if (isFullScreenPage) {
     return (
-      <div className="dae-page" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <PageComponent />
-        <AnnotationViewer
-          source={annotationSourceDocument as unknown as AnnotationSourceDocument}
-          options={{
-            currentPageId: "data-analysis-engine",
-            toolbarEdge: 'right',
-            showToolbar: true,
-            showThemeToggle: true,
-            showColorFilter: true,
-            emptyWhenNoData: true,
-          }}
-        />
-      </div>
+      <>
+        <div className="dae-page" style={{ height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <PageComponent />
+          <AnnotationViewer
+            source={annotationSourceDocument as unknown as AnnotationSourceDocument}
+            options={{
+              currentPageId: "data-analysis-engine",
+              toolbarEdge: 'right',
+              showToolbar: true,
+              showThemeToggle: true,
+              showColorFilter: true,
+              emptyWhenNoData: true,
+            }}
+          />
+        </div>
+        <AIAssistantWidget setPage={setPage} />
+      </>
     );
   }
 
   return (
-    <Layout activePage={layoutActivePage as PageId} onNavigate={handleNavigate}>
-      <PageComponent />
-    </Layout>
+    <>
+      <Layout activePage={layoutActivePage as PageId} onNavigate={handleNavigate}>
+        {adminDefaultTab ? <AssistantAdminPage defaultTab={adminDefaultTab} /> : <PageComponent />}
+      </Layout>
+      <AIAssistantWidget setPage={setPage} />
+    </>
   );
 }

@@ -6,6 +6,7 @@ import {
   Download,
   Search,
   BarChart3,
+  BarChart2,
   FileText,
   Gauge,
   Monitor,
@@ -16,7 +17,6 @@ import {
   Activity,
   PanelLeftClose,
   PanelLeftOpen,
-  BarChart2,
   ChevronDown,
   LogOut,
   User,
@@ -26,6 +26,12 @@ import {
   ClipboardCheck,
   UserCog,
   ShieldCheck,
+  Sparkles,
+  BookOpen,
+  Settings2,
+  Layers,
+  MessageSquare,
+  BarChart,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -54,11 +60,20 @@ export type PageId =
   | 'metrics-push'
   | 'subscribe-approve'
   | 'approve-assignee'
-  | 'permission-approve';
+  | 'permission-approve'
+  | 'assistant-admin'
+  | 'query'
+  | 'ai-knowledge'
+  | 'ai-config'
+  | 'ai-semantic'
+  | 'ai-conv-logs'
+  | 'ai-query-logs';
 
 interface NavGroup {
   label: string;
   items: { id: PageId; label: string; icon: React.ElementType }[];
+  /** 仅超管 / AI 管理员可见（菜单权限控制） */
+  adminOnly?: boolean;
 }
 
 const allNavGroups: NavGroup[] = [
@@ -86,6 +101,7 @@ const allNavGroups: NavGroup[] = [
       { id: 'report', label: '报表', icon: FileText },
       { id: 'dashboard', label: '仪表盘', icon: Gauge },
       { id: 'data-screen', label: '数据大屏', icon: Monitor },
+      { id: 'query', label: '智能问数', icon: Sparkles },
     ],
   },
   {
@@ -113,6 +129,17 @@ const allNavGroups: NavGroup[] = [
       { id: 'permission-approve', label: '权限审核', icon: ShieldCheck },
     ],
   },
+  {
+    label: 'AI 中心',
+    adminOnly: true,
+    items: [
+      { id: 'ai-knowledge', label: '知识库文档', icon: BookOpen },
+      { id: 'ai-config', label: '参数配置', icon: Settings2 },
+      { id: 'ai-semantic', label: '语义层 / 行业黑话', icon: Layers },
+      { id: 'ai-conv-logs', label: '对话记录', icon: MessageSquare },
+      { id: 'ai-query-logs', label: '问数记录', icon: BarChart },
+    ],
+  },
 ];
 
 interface LayoutProps {
@@ -132,6 +159,7 @@ export default function Layout({ activePage, onNavigate, children }: LayoutProps
   const navGroups = useMemo(() => {
     if (currentUser.isSuperAdmin) return allNavGroups;
     return allNavGroups
+      .filter((group) => !group.adminOnly)
       .map((group) => ({
         ...group,
         items: group.items.filter((item) => item.id !== 'tenant-manage'),

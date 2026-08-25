@@ -4,10 +4,10 @@
  * - 支持回答后手动切换图表类型
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { BarChart3, LineChart, PieChart, Hash, ScatterChart, Table2, FileText, Search } from 'lucide-react';
 import type { QueryResult } from './queryEngine';
-import type { QueryChartType } from '../../data/semanticLayer';
+import type { LinkedComponent, QueryChartType } from '../../data/semanticLayer';
 
 const PALETTE = ['#1677FF', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
 
@@ -20,23 +20,44 @@ const CHART_OPTIONS: { type: QueryChartType; label: string; icon: React.ElementT
   { type: 'table', label: '明细', icon: Table2 },
 ];
 
-/* 解读模式：资产实际图表组件的类型映射 */
-const COMPONENT_ICON: Record<string, React.ElementType> = {
-  line: LineChart,
-  bar: BarChart3,
-  pie: PieChart,
-  area: LineChart,
-  table: Table2,
-  card: Hash,
-  text: FileText,
-  image: FileText,
-  query: Search,
-  richText: FileText,
-  media: FileText,
-  tab: FileText,
-  insight: FileText,
-  reuse: FileText,
-};
+/** 为联动组件生成 mock 数据 */
+function buildComponentData(component: LinkedComponent): { dim: string; value: number }[] {
+  const name = component.name;
+  const isTrend = /趋势|走势|曲线|变化|波动|趋势图|实时/.test(name);
+  const isRatio = /占比|分布|结构|比例|份额/.test(name);
+  const isRank = /排行|排名|Top|TOP/.test(name);
+
+  if (isTrend) {
+    const months = ['1月', '2月', '3月', '4月', '5月', '6月'];
+    const base = 5000 + Math.abs(name.length * 317) % 8000;
+    return months.map((m, i) => ({ dim: m, value: Math.round(base * (0.8 + i * 0.08 + Math.random() * 0.15)) }));
+  }
+  if (isRatio || isRank) {
+    const cats = ['数码', '家居', '服饰', '食品', '美妆'];
+    return cats.map((c, i) => ({ dim: c, value: Math.round(1200 + Math.abs(name.length * 53 + i * 237) % 4800) }));
+  }
+  // 默认分类数据
+  return ['A类', 'B类', 'C类', 'D类'].map((c, i) => ({ dim: c, value: Math.round(800 + Math.abs(name.length * 71 + i * 199) % 3200) }));
+}
+
+/** 把资产组件类型映射为可渲染图表类型 */
+function mapComponentType(type: string): QueryChartType | 'metric' | 'placeholder' {
+  switch (type) {
+    case 'line':
+    case 'area':
+      return 'line';
+    case 'bar':
+      return 'bar';
+    case 'pie':
+      return 'pie';
+    case 'table':
+      return 'table';
+    case 'card':
+      return 'metric';
+    default:
+      return 'placeholder';
+  }
+}
 
 function componentTypeLabel(t: string): string {
   const map: Record<string, string> = {
@@ -55,11 +76,93 @@ function componentTypeLabel(t: string): string {
     insight: '洞察',
     reuse: '复用组件',
   };
-  return map[t] || t; // 中文类型（漏斗图/雷达图…）或未知类型原样展示
+  return map[t] || t;
 }
 
 function componentIcon(t: string): React.ElementType {
-  return COMPONENT_ICON[t] || FileText;
+  const map: Record<string, React.ElementType> = {
+    line: LineChart,
+    bar: BarChart3,
+    pie: PieChart,
+    area: LineChart,
+    table: Table2,
+    card: Hash,
+    text: FileText,
+    image: FileText,
+    query: Search,
+    richText: FileText,
+    media: FileText,
+    tab: FileText,
+    insight: FileText,
+    reuse: FileText,
+  };
+  return map[t] || FileText;
+}
+
+function MetricCardView({ name, value }: { name: string; value: number }) {
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12 }}>
+      <div style={{ fontSize: 32, fontWeight: 700, color: '#0f172a' }}>{value.toLocaleString()}</div>
+      <div style={{ fontSize: 12, color: '#64748b', textAlign: 'center' }}>{name}</div>
+    </div>
+  );
+}
+
+function LinkedComponentView({ component }: { component: LinkedComponent }) {
+  const data = useMemo(() => buildComponentData(component), [component]);
+  const chartType = mapComponentType(component.type);
+  const Icon = componentIcon(component.type);
+
+  if (chartType === 'metric') {
+    return (
+      <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+        <MetricCardView name={component.name} value={data[0]?.value ?? Math.round(10000 + Math.random() * 90000)} />
+      </div>
+    );
+  }
+
+  if (chartType === 'placeholder') {
+    return (
+      <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc', padding: '16px 12px', display: 'flex', alignItems: 'center', gap: 10, minHeight: 120 }}>
+        <Icon size={18} style={{ color: '#94a3b8', flexShrink: 0 }} />
+        <div>
+          <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 500 }}>{component.name}</div>
+          <div style={{ fontSize: 11, color: '#94a3b8' }}>{componentTypeLabel(component.type)} · 非图表组件</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: '#0f172a' }}>{component.name}</div>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>{componentTypeLabel(component.type)}</span>
+      </div>
+      <div style={{ padding: 8 }}>
+        {chartType === 'table' ? (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>维度</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>数值</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((d, i) => (
+                <tr key={i}>
+                  <td style={tdStyle}>{d.dim}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>{d.value.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <QueryChart chartType={chartType} data={data} />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function QueryChart({ chartType, data }: { chartType: QueryChartType; data: { dim: string; value: number }[] }) {
@@ -253,34 +356,27 @@ export function QueryResultView({
         {result.sql}
       </pre>
 
-      {/* 解读模式：联动展示资产实际图表组件 */}
+      {/* 解读模式：仪表盘/数据大屏联动渲染真实图表组件；报表只给结论，不展示任何图表区块 */}
       {result.isInterpretation ? (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
-            实际图表组件
-            <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: '#94a3b8' }}>（{result.linkedComponents?.length ?? 0} 个，来自系统已配置）</span>
+        result.scopeType !== 'report' ? (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#0f172a', marginBottom: 10 }}>
+              实际图表组件
+              <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: '#94a3b8' }}>（{result.linkedComponents?.length ?? 0} 个，来自系统已配置）</span>
+            </div>
+            {result.linkedComponents && result.linkedComponents.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+                {result.linkedComponents.map((c) => (
+                  <LinkedComponentView key={c.id} component={c} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12.5, color: '#94a3b8', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 8, padding: '10px 12px' }}>
+                该资产暂未关联图表组件。
+              </div>
+            )}
           </div>
-          {result.linkedComponents && result.linkedComponents.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {result.linkedComponents.map((c, i) => {
-                const Icon = componentIcon(c.type);
-                return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', minWidth: 120 }}>
-                    <Icon size={15} style={{ color: '#1677FF', flexShrink: 0 }} />
-                    <div style={{ lineHeight: 1.25 }}>
-                      <div style={{ fontSize: 12.5, color: '#0f172a' }}>{c.name}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{componentTypeLabel(c.type)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ fontSize: 12.5, color: '#94a3b8', background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 8, padding: '10px 12px' }}>
-              该资产暂未关联图表组件。
-            </div>
-          )}
-        </div>
+        ) : null
       ) : (
         <>
           {/* 图表 + 手动切换 */}

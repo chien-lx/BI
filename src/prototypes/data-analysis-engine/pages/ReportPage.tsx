@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, FileText, Pencil, Trash2, Eye, Settings, Copy } from 'lucide-react';
+import { Plus, FileText, Pencil, Trash2, Eye, Settings, Copy, Train, ChevronRight, ChevronDown } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import SearchFilter from '../components/SearchFilter';
 import Drawer from '../components/Drawer';
@@ -8,6 +8,9 @@ import DeleteConfirm from '../components/DeleteConfirm';
 import { reports, setAssetStatus, appendOperationLog, nextOperationLogId, currentUser, type Report } from '../data/mockData';
 import UserPermSelect from '../components/UserPermSelect';
 import StatusSwitch from '../components/StatusSwitch';
+import { QueryabilityBadge } from '../components/QueryabilityBadge';
+import { ScopeTrainingDrawer } from '../components/ScopeTrainingDrawer';
+import { getDatasets } from '../data/semanticLayer';
 
 const thStyle = {
   padding: '10px 14px', fontSize: '12px', fontWeight: 600,
@@ -36,6 +39,30 @@ export default function ReportPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [jumpPage, setJumpPage] = useState('');
+
+  // 反向训练入口：在报表列表直接训练其依赖的数据集
+  const [trainOpen, setTrainOpen] = useState(false);
+  const [trainTarget, setTrainTarget] = useState<{ id: string; name: string } | null>(null);
+  const [queryRefresh, setQueryRefresh] = useState(0);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const datasetMap = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    getDatasets().forEach((d) => map.set(d.datasetName, { id: d.id, name: d.datasetName }));
+    return map;
+  }, [queryRefresh]);
+  const openTrain = (item: Report) => {
+    setTrainTarget({ id: item.id, name: item.name });
+    setTrainOpen(true);
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const filtered = useMemo(() => {
     return items.filter((item) =>
@@ -144,58 +171,122 @@ export default function ReportPage() {
           <table className="dae-table" style={{ margin: 0 }}>
             <thead>
               <tr>
+                <th style={{ ...thStyle, width: 36, padding: '10px 8px' }}></th>
                 <th style={thStyle}>报表名称</th>
                 <th style={thStyle}>数据集</th>
                 <th style={thStyle}>创建人</th>
                 <th style={thStyle}>更新人</th>
                 <th style={thStyle}>更新时间</th>
                 <th style={thStyle}>状态</th>
+                <th style={thStyle}>可问数</th>
                 <th style={{ ...thStyle, width: 200 }}>操作</th>
               </tr>
             </thead>
             <tbody>
-              {pagedData.map((item) => (
-                <tr key={item.id}>
-                  <td title={item.name} style={tdStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <FileText size={16} style={{ color: 'var(--dae-primary)', minWidth: 16 }} />
-                      <span style={{ fontWeight: 500 }}>{item.name}</span>
-                    </div>
-                  </td>
-                  <td title={item.datasetName} style={tdStyle}>{item.datasetName}</td>
-                  <td title={item.creator} style={tdStyle}>{item.creator}</td>
-                  <td title={item.updater} style={tdStyle}>{item.updater}</td>
-                  <td title={item.updatedAt} style={tdStyle}>{item.updatedAt}</td>
-                  <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                    {item.status === 'online' && (
-                      <span className="dae-tag dae-tag-green">已上线</span>
+              {pagedData.map((item) => {
+                const expanded = expandedIds.has(item.id);
+                const ds = datasetMap.get(item.datasetName);
+                return (
+                  <React.Fragment key={item.id}>
+                    <tr>
+                      <td style={{ ...tdStyle, width: 36, padding: '9px 8px', textAlign: 'center' }}>
+                        <button
+                          onClick={() => toggleExpand(item.id)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 22,
+                            height: 22,
+                            borderRadius: 5,
+                            border: '1px solid var(--dae-border)',
+                            background: '#fff',
+                            color: 'var(--dae-ink-secondary)',
+                            cursor: 'pointer',
+                            padding: 0,
+                          }}
+                        >
+                          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                      </td>
+                      <td title={item.name} style={tdStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <FileText size={16} style={{ color: 'var(--dae-primary)', minWidth: 16 }} />
+                          <span style={{ fontWeight: 500 }}>{item.name}</span>
+                        </div>
+                      </td>
+                      <td title={item.datasetName} style={tdStyle}>{item.datasetName}</td>
+                      <td title={item.creator} style={tdStyle}>{item.creator}</td>
+                      <td title={item.updater} style={tdStyle}>{item.updater}</td>
+                      <td title={item.updatedAt} style={tdStyle}>{item.updatedAt}</td>
+                      <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                        {item.status === 'online' && (
+                          <span className="dae-tag dae-tag-green">已上线</span>
+                        )}
+                        {item.status === 'pending' && (
+                          <span className="dae-tag dae-tag-gray">待上线</span>
+                        )}
+                        {item.status === 'offline' && (
+                          <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 4, fontSize: 12, lineHeight: '20px', background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>已下线</span>
+                        )}
+                      </td>
+                      <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                        <QueryabilityBadge type="report" id={item.id} name={item.name} refreshKey={queryRefresh} />
+                      </td>
+                      <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                        <div className="dae-table-actions">
+                          {/* Switch 开关：上下线切换 */}
+                          <StatusSwitch status={item.status} onToggle={() => toggleOnlineStatus(item)} />
+                          <IconAction icon={<Eye size={16} />} label="预览" onClick={() => { window.location.hash = '#page=report-preview'; }} />
+                          <IconAction icon={<Pencil size={16} />} label="编辑" onClick={() => openEdit(item)} />
+                          <IconAction icon={<Settings size={16} />} label="配置" onClick={() => { window.location.hash = '#page=report-config'; }} />
+                          <IconAction icon={<Train size={16} />} label="训练" onClick={() => openTrain(item)} />
+                          <IconAction icon={<Copy size={16} />} label="复制" onClick={() => openCopy(item)} />
+                          <IconAction icon={<Trash2 size={16} />} label="删除" onClick={() => {
+                            if (item.status === 'online') {
+                              alert('该报表已上线，请先下线后再删除');
+                              return;
+                            }
+                            openDelete(item);
+                          }} />
+                        </div>
+                      </td>
+                    </tr>
+                    {expanded && (
+                      <tr>
+                        <td colSpan={9} style={{ padding: 0 }}>
+                          <div style={{ padding: '10px 16px 10px 54px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 12 }}>
+                            <div style={{ color: '#64748b', marginBottom: 6 }}>已使用数据集：</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {ds ? (
+                                <button
+                                  onClick={() => { window.location.hash = `page=dataset-preview&datasetId=${ds.id}&from=report`; }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    padding: '4px 10px',
+                                    borderRadius: 999,
+                                    border: '1px solid #bfdbfe',
+                                    background: '#eff6ff',
+                                    color: '#1677FF',
+                                    fontSize: 12,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {ds.name}
+                                </button>
+                              ) : (
+                                <span style={{ color: '#94a3b8' }}>未关联数据集</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                    {item.status === 'pending' && (
-                      <span className="dae-tag dae-tag-gray">待上线</span>
-                    )}
-                    {item.status === 'offline' && (
-                      <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 4, fontSize: 12, lineHeight: '20px', background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>已下线</span>
-                    )}
-                  </td>
-                  <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                    <div className="dae-table-actions">
-                      {/* Switch 开关：上下线切换 */}
-                      <StatusSwitch status={item.status} onToggle={() => toggleOnlineStatus(item)} />
-                      <IconAction icon={<Eye size={16} />} label="预览" onClick={() => { window.location.hash = '#page=report-preview'; }} />
-                      <IconAction icon={<Pencil size={16} />} label="编辑" onClick={() => openEdit(item)} />
-                      <IconAction icon={<Settings size={16} />} label="配置" onClick={() => { window.location.hash = '#page=report-config'; }} />
-                      <IconAction icon={<Copy size={16} />} label="复制" onClick={() => openCopy(item)} />
-                      <IconAction icon={<Trash2 size={16} />} label="删除" onClick={() => {
-                        if (item.status === 'online') {
-                          alert('该报表已上线，请先下线后再删除');
-                          return;
-                        }
-                        openDelete(item);
-                      }} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
           </div>
@@ -347,6 +438,16 @@ export default function ReportPage() {
           <UserPermSelect label="管理权限" selected={copyManagePerm} onChange={setCopyManagePerm} />
         </div>
       </Drawer>
+
+      {/* 反向训练：在报表列表直接训练其依赖的数据集 */}
+      <ScopeTrainingDrawer
+        open={trainOpen}
+        type="report"
+        id={trainTarget?.id || ''}
+        name={trainTarget?.name || ''}
+        onClose={() => setTrainOpen(false)}
+        onTrained={() => setQueryRefresh((n) => n + 1)}
+      />
     </div>
   );
 }

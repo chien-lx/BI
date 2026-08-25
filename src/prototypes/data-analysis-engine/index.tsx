@@ -23,6 +23,7 @@ import DashboardPreviewPage from './pages/dashboard/preview';
 import DataScreenPage from './pages/DataScreenPage';
 import DataScreenConfigPage from './pages/data-screen/config';
 import DataScreenPreviewPage from './pages/data-screen/preview';
+import DatasetPreviewPage from './pages/DatasetPreviewPage';
 import UserManagePage from './pages/UserManagePage';
 import RoleManagePage from './pages/RoleManagePage';
 import OperationLogPage from './pages/OperationLogPage';
@@ -64,6 +65,7 @@ const pageMap: Record<string, React.ComponentType> = {
   'data-screen': DataScreenPage,
   'data-screen-config': DataScreenConfigPage,
   'data-screen-preview': DataScreenPreviewPage,
+  'dataset-preview': DatasetPreviewPage,
   'user-manage': UserManagePage,
   'role-manage': RoleManagePage,
   'operation-log': OperationLogPage,
@@ -110,6 +112,7 @@ const route = defineHashPageRoute(
     { id: 'data-screen', title: '数据大屏' },
     { id: 'data-screen-config', title: '数据大屏配置' },
     { id: 'data-screen-preview', title: '数据大屏预览' },
+    { id: 'dataset-preview', title: '数据集预览' },
     { id: 'user-manage', title: '用户管理' },
     { id: 'role-manage', title: '角色管理' },
     { id: 'metrics-task', title: '监控任务' },

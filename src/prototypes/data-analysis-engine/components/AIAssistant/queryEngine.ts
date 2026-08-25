@@ -11,10 +11,14 @@
 import {
   findHitTerms,
   getScopeLinkedComponents,
+  getScopeQueryability,
+  getScopeDatasetDependencies,
   type DatasetSchema,
+  type LinkedComponent,
   type MetricDefinition,
   type QueryChartType,
   type QueryScope,
+  type ScopeType,
   type TerminologyItem,
 } from '../../data/semanticLayer';
 
@@ -46,8 +50,10 @@ export interface QueryResult {
   hitSemantic: boolean;
   /** 是否为智能解读（报表/仪表盘/数据大屏，不取数） */
   isInterpretation?: boolean;
+  /** 解读资产类型 */
+  scopeType?: ScopeType;
   /** 解读模式下联动展示的资产实际图表组件 */
-  linkedComponents?: { name: string; type: string }[];
+  linkedComponents?: LinkedComponent[];
 }
 
 const CHART_NAMES: Record<QueryChartType, string> = {
@@ -178,6 +184,27 @@ export function runQuery(
   const q = question.toLowerCase();
   const hitTerms = findHitTerms(question, terms);
 
+  // —— 未训练拦截：数据集/报表/仪表盘/大屏的可问数均依赖数据集训练状态 ——
+  const qability = getScopeQueryability(scope);
+  if (qability === 'unqueryable') {
+    const deps = getScopeDatasetDependencies(scope);
+    const untrainedNames = deps
+      .map((id) => datasets.find((d) => d.id === id)?.datasetName || id)
+      .join('、');
+    const typeLabel = scope.type === 'dataset' ? '数据集' : scope.type === 'report' ? '报表' : scope.type === 'dashboard' ? '仪表盘' : '数据大屏';
+    return {
+      rewrittenQuestion: question,
+      hitTerms: [],
+      reasoning: `${typeLabel}「${scope.name}」尚未完成训练，无法生成可置信的回答。`,
+      sql: `-- 不可问数：${typeLabel}「${scope.name}」依赖的数据集未训练`,
+      chartType: 'metric',
+      chartTypeName: '指标卡',
+      data: [],
+      summary: `该${typeLabel}依赖的数据集「${untrainedNames}」未训练，请先到「数据准备 → 数据集」中执行训练。`,
+      hitSemantic: false,
+    };
+  }
+
   // —— 智能解读模式（报表 / 仪表盘 / 数据大屏）——
   if (scope.type !== 'dataset') {
     const ds = scope.datasetId ? datasets.find((d) => d.id === scope.datasetId) : undefined;
@@ -198,6 +225,7 @@ export function runQuery(
       summary,
       hitSemantic: true,
       isInterpretation: true,
+      scopeType: scope.type,
       linkedComponents: linked,
     };
   }

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Monitor, Eye, Pencil, Trash2, ShieldCheck, Copy, Settings } from 'lucide-react';
+import { Plus, Monitor, Eye, Pencil, Trash2, ShieldCheck, Copy, Settings, Train, ChevronRight, ChevronDown } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import SearchFilter from '../components/SearchFilter';
 import Drawer from '../components/Drawer';
@@ -8,6 +8,9 @@ import IconAction from '../components/IconAction';
 import DeleteConfirm from '../components/DeleteConfirm';
 import UserPermSelect from '../components/UserPermSelect';
 import StatusSwitch from '../components/StatusSwitch';
+import { QueryabilityBadge } from '../components/QueryabilityBadge';
+import { ScopeTrainingDrawer } from '../components/ScopeTrainingDrawer';
+import { getDatasets } from '../data/semanticLayer';
 import { dataScreens, setAssetStatus, appendOperationLog, nextOperationLogId, currentUser, type DataScreenItem } from '../data/mockData';
 
 export default function DataScreenPage() {
@@ -31,6 +34,30 @@ export default function DataScreenPage() {
   const [copyName, setCopyName] = useState('');
   const [copyViewPerm, setCopyViewPerm] = useState<string[]>([]);
   const [copyManagePerm, setCopyManagePerm] = useState<string[]>([]);
+
+  // 反向训练入口：在数据大屏列表直接训练其依赖的数据集
+  const [trainOpen, setTrainOpen] = useState(false);
+  const [trainTarget, setTrainTarget] = useState<{ id: string; name: string } | null>(null);
+  const [queryRefresh, setQueryRefresh] = useState(0);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const datasetMap = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    getDatasets().forEach((d) => map.set(d.datasetName, { id: d.id, name: d.datasetName }));
+    return map;
+  }, [queryRefresh]);
+  const openTrain = (item: DataScreenItem) => {
+    setTrainTarget({ id: item.id, name: item.name });
+    setTrainOpen(true);
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const openView = (item: DataScreenItem) => {
     window.location.hash = `page=data-screen-preview&screenId=${item.id}`;
@@ -132,45 +159,113 @@ export default function DataScreenPage() {
         <table className="dae-table" style={{margin:0}}>
           <thead>
             <tr>
+              <th style={{padding:'10px 8px',fontSize:'12px',fontWeight:600,width:36}}></th>
               <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>大屏名称</th>
               <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>分辨率</th>
               <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>创建人</th>
               <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>更新时间</th>
               <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>状态</th>
               <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>创建时间</th>
+              <th style={{padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>可问数</th>
               <th style={{width:220,padding:'10px 14px',fontSize:'12px',fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>操作</th>
             </tr>
           </thead>
           <tbody>
-            {paginatedItems.map((item) => (
-              <tr key={item.id}>
-                <td title={item.name} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Monitor size={16} style={{ color: 'var(--dae-primary)' }} />
-                    <span style={{ fontWeight: 500 }}>{item.name}</span>
-                  </div>
-                </td>
-                <td title={item.resolution} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.resolution}</td>
-                <td title={item.creator} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.creator}</td>
-                <td title={item.updatedAt} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.updatedAt}</td>
-                <td style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
-                  {item.status === 'pending' && <span className="dae-tag dae-tag-gray" style={{ whiteSpace: 'nowrap' }}>待上线</span>}
-                  {item.status === 'online' && <span className="dae-tag dae-tag-green" style={{ whiteSpace: 'nowrap' }}>已上线</span>}
-                  {item.status === 'offline' && <span style={{ background:'#fff7ed', color:'#c2410c', border:'1px solid #fed7aa', padding:'2px 10px', borderRadius:999, fontSize:12, whiteSpace:'nowrap' }}>已下线</span>}
-                </td>
-                <td title={item.createdAt} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.createdAt}</td>
-                <td style={{padding:'9px 14px'}}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <StatusSwitch status={item.status} onToggle={() => toggleStatus(item)} />
-                    <IconAction icon={<Eye size={16} />} label="查看" onClick={() => openView(item)} />
-                    <IconAction icon={<Settings size={16} />} label="配置" onClick={() => openConfig(item)} />
-                    <IconAction icon={<Pencil size={16} />} label="编辑" onClick={() => openModal(item)} />
-                    <IconAction icon={<Copy size={16} />} label="复制" onClick={() => openCopy(item)} />
-                    <IconAction icon={<Trash2 size={16} />} label="删除" onClick={() => openDelete(item)} />
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {paginatedItems.map((item) => {
+              const expanded = expandedIds.has(item.id);
+              const datasetNames = Array.from(new Set((item.components || []).map((c) => c.datasetName).filter((n): n is string => Boolean(n))));
+              return (
+                <React.Fragment key={item.id}>
+                  <tr>
+                    <td style={{padding:'9px 8px',fontSize:'12px',whiteSpace:'nowrap',textAlign:'center'}}>
+                      <button
+                        onClick={() => toggleExpand(item.id)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: 22,
+                          height: 22,
+                          borderRadius: 5,
+                          border: '1px solid var(--dae-border)',
+                          background: '#fff',
+                          color: 'var(--dae-ink-secondary)',
+                          cursor: 'pointer',
+                          padding: 0,
+                        }}
+                      >
+                        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </button>
+                    </td>
+                    <td title={item.name} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Monitor size={16} style={{ color: 'var(--dae-primary)' }} />
+                        <span style={{ fontWeight: 500 }}>{item.name}</span>
+                      </div>
+                    </td>
+                    <td title={item.resolution} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.resolution}</td>
+                    <td title={item.creator} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.creator}</td>
+                    <td title={item.updatedAt} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.updatedAt}</td>
+                    <td style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                      {item.status === 'pending' && <span className="dae-tag dae-tag-gray" style={{ whiteSpace: 'nowrap' }}>待上线</span>}
+                      {item.status === 'online' && <span className="dae-tag dae-tag-green" style={{ whiteSpace: 'nowrap' }}>已上线</span>}
+                      {item.status === 'offline' && <span style={{ background:'#fff7ed', color:'#c2410c', border:'1px solid #fed7aa', padding:'2px 10px', borderRadius:999, fontSize:12, whiteSpace:'nowrap' }}>已下线</span>}
+                    </td>
+                    <td title={item.createdAt} style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.createdAt}</td>
+                    <td style={{padding:'9px 14px',fontSize:'12px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                      <QueryabilityBadge type="data-screen" id={item.id} name={item.name} refreshKey={queryRefresh} />
+                    </td>
+                    <td style={{padding:'9px 14px'}}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <StatusSwitch status={item.status} onToggle={() => toggleStatus(item)} />
+                        <IconAction icon={<Eye size={16} />} label="查看" onClick={() => openView(item)} />
+                        <IconAction icon={<Settings size={16} />} label="配置" onClick={() => openConfig(item)} />
+                        <IconAction icon={<Train size={16} />} label="训练" onClick={() => openTrain(item)} />
+                        <IconAction icon={<Pencil size={16} />} label="编辑" onClick={() => openModal(item)} />
+                        <IconAction icon={<Copy size={16} />} label="复制" onClick={() => openCopy(item)} />
+                        <IconAction icon={<Trash2 size={16} />} label="删除" onClick={() => openDelete(item)} />
+                      </div>
+                    </td>
+                  </tr>
+                  {expanded && (
+                    <tr>
+                      <td colSpan={9} style={{ padding: 0 }}>
+                        <div style={{ padding: '10px 16px 10px 54px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: 12 }}>
+                          <div style={{ color: '#64748b', marginBottom: 6 }}>已使用数据集：</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {datasetNames.length === 0 && <span style={{ color: '#94a3b8' }}>未关联数据集</span>}
+                            {datasetNames.map((name) => {
+                              const ds = datasetMap.get(name);
+                              return (
+                                <button
+                                  key={name}
+                                  onClick={() => { if (ds) window.location.hash = `page=dataset-preview&datasetId=${ds.id}&from=data-screen`; }}
+                                  disabled={!ds}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    padding: '4px 10px',
+                                    borderRadius: 999,
+                                    border: '1px solid #bfdbfe',
+                                    background: ds ? '#eff6ff' : '#f1f5f9',
+                                    color: ds ? '#1677FF' : '#94a3b8',
+                                    fontSize: 12,
+                                    cursor: ds ? 'pointer' : 'not-allowed',
+                                  }}
+                                >
+                                  {name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
         </div>
@@ -334,6 +429,16 @@ export default function DataScreenPage() {
         <UserPermSelect label="查看权限" selected={copyViewPerm} onChange={setCopyViewPerm} />
         <UserPermSelect label="管理权限" selected={copyManagePerm} onChange={setCopyManagePerm} />
       </Drawer>
+
+      {/* 反向训练：在数据大屏列表直接训练其依赖的数据集 */}
+      <ScopeTrainingDrawer
+        open={trainOpen}
+        type="data-screen"
+        id={trainTarget?.id || ''}
+        name={trainTarget?.name || ''}
+        onClose={() => setTrainOpen(false)}
+        onTrained={() => setQueryRefresh((n) => n + 1)}
+      />
     </div>
   );
 }

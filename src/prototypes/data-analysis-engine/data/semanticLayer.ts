@@ -157,6 +157,10 @@ export function syncDatasetFromSource(ds: DatasetSchema): DatasetSchema {
   return { ...ds, fields: real, fieldSource: 'real', updatedAt: new Date().toISOString().slice(0, 10) };
 }
 
+const TRAINED_BY_DEFAULT = new Set([
+  'DT001','DT002','DT003','DT007','DT008','DT010','DT011','DT013','DT014','DT016','DT018','DT019','DT021',
+]);
+
 function buildSeedDatasets(): DatasetSchema[] {
   return systemDatasets.map((d) => ({
     id: d.id,
@@ -166,6 +170,11 @@ function buildSeedDatasets(): DatasetSchema[] {
     // 默认用业务域推断列（待完善）；真实列需「从数据源导入真实字段」
     fields: inferFields(d.name),
     fieldSource: 'inferred' as const,
+    trainingStatus: TRAINED_BY_DEFAULT.has(d.id) ? ('trained' as const) : ('untrained' as const),
+    trainingStrategy: 'incremental' as const,
+    trainingContent: { fields: true, terms: true, metrics: true, examples: true },
+    trainingSchedule: 'manual' as const,
+    trainedAt: TRAINED_BY_DEFAULT.has(d.id) ? new Date().toISOString() : undefined,
   }));
 }
 
@@ -207,20 +216,198 @@ export function groupScopes(scopes: QueryScope[]): { type: ScopeType; label: str
   })).filter((g) => g.items.length > 0);
 }
 
-/** 解读模式下，返回该资产在系统中实际已配置的图表组件（联动展示） */
-export function getScopeLinkedComponents(scope: QueryScope): { name: string; type: string }[] {
+/* ============================ 训练状态与作用域可问数 ============================ */
+
+const trainingStatusOrder: Record<TrainingStatus, number> = {
+  untrained: 0,
+  failed: 1,
+  training: 2,
+  trained: 3,
+};
+
+/** 取数据集训练状态（可读） */
+export function getDatasetTrainingStatus(datasetId: string): TrainingStatus {
+  const ds = getDatasets().find((d) => d.id === datasetId);
+  return ds?.trainingStatus || 'untrained';
+}
+
+/** 数据集是否已训练 */
+export function isDatasetTrained(datasetId: string): boolean {
+  return getDatasetTrainingStatus(datasetId) === 'trained';
+}
+
+/** 按数据集名称查找系统数据集 */
+function findSystemDatasetByName(name: string) {
+  return systemDatasets.find((d) => d.name === name);
+}
+
+/** 取某作用域依赖的数据集 ID 列表（报表/仪表盘/大屏均基于数据集） */
+export function getScopeDatasetDependencies(scope: QueryScope): string[] {
+  if (scope.type === 'dataset') {
+    return scope.datasetId ? [scope.datasetId] : [];
+  }
   if (scope.type === 'report') {
     const r = systemReports.find((x) => x.id === scope.id);
     if (!r) return [];
-    return systemCharts.filter((c) => c.datasetName === r.datasetName).map((c) => ({ name: c.name, type: c.type }));
+    const ds = findSystemDatasetByName(r.datasetName);
+    return ds ? [ds.id] : [];
   }
   if (scope.type === 'dashboard') {
     const d = systemDashboards.find((x) => x.id === scope.id);
-    return (d?.charts || []).map((c) => ({ name: c.name, type: c.type }));
+    if (!d?.charts) return [];
+    const names = Array.from(new Set(d.charts.map((c) => c.datasetName).filter(Boolean) as string[]));
+    return names.map((n) => findSystemDatasetByName(n)?.id).filter(Boolean) as string[];
   }
   if (scope.type === 'data-screen') {
     const s = systemDataScreens.find((x) => x.id === scope.id);
-    return (s?.components || []).map((c) => ({ name: c.name, type: c.type }));
+    if (!s?.components) return [];
+    const names = Array.from(new Set(s.components.map((c) => c.datasetName).filter(Boolean) as string[]));
+    return names.map((n) => findSystemDatasetByName(n)?.id).filter(Boolean) as string[];
+  }
+  return [];
+}
+
+export type ScopeQueryability = 'queryable' | 'partial' | 'unqueryable' | 'na';
+
+/** 计算作用域可问数状态：数据集直接看训练状态；报表/仪表盘/大屏看依赖数据集是否全部已训练 */
+export function getScopeQueryability(scope: QueryScope): ScopeQueryability {
+  const deps = getScopeDatasetDependencies(scope);
+  if (deps.length === 0) return 'na';
+  const trained = deps.filter((id) => isDatasetTrained(id)).length;
+  if (trained === deps.length) return 'queryable';
+  if (trained === 0) return 'unqueryable';
+  return 'partial';
+}
+
+/** 更新数据集训练状态（DatasetPage 训练按钮调用） */
+export function updateDatasetTrainingStatus(
+  datasetId: string,
+  patch: Partial<Pick<DatasetSchema, 'trainingStatus' | 'trainingStrategy' | 'trainingContent' | 'trainingSchedule' | 'trainedAt' | 'trainingFailedReason'>>
+): DatasetSchema | null {
+  const items = getDatasets();
+  const idx = items.findIndex((d) => d.id === datasetId);
+  if (idx === -1) return null;
+  const updated = { ...items[idx], ...patch };
+  items[idx] = updated;
+  saveDatasets(items);
+  return updated;
+}
+
+/** 标记数据集训练中 */
+export function markDatasetTraining(datasetId: string): DatasetSchema | null {
+  return updateDatasetTrainingStatus(datasetId, { trainingStatus: 'training' });
+}
+
+/** 完成训练：状态改为 trained 并写入时间 */
+export function finishDatasetTraining(
+  datasetId: string,
+  options: { strategy: 'full' | 'incremental'; content: TrainingContent; schedule: TrainingSchedule }
+): DatasetSchema | null {
+  const items = getDatasets();
+  const idx = items.findIndex((d) => d.id === datasetId);
+  if (idx === -1) return null;
+  let ds = items[idx];
+  // 若训练内容包含字段语义，自动把字段同步为数据源真实列
+  if (options.content.fields) {
+    ds = syncDatasetFromSource(ds);
+  }
+  const updated: DatasetSchema = {
+    ...ds,
+    trainingStatus: 'trained',
+    trainingStrategy: options.strategy,
+    trainingContent: options.content,
+    trainingSchedule: options.schedule,
+    trainedAt: new Date().toISOString(),
+  };
+  items[idx] = updated;
+  saveDatasets(items);
+  return updated;
+}
+
+/** 训练失败 */
+export function failDatasetTraining(datasetId: string, reason: string): DatasetSchema | null {
+  return updateDatasetTrainingStatus(datasetId, { trainingStatus: 'failed', trainingFailedReason: reason });
+}
+
+/** 训练状态中文标签 */
+export function trainingStatusLabel(status?: TrainingStatus): string {
+  switch (status) {
+    case 'trained':
+      return '已训练';
+    case 'training':
+      return '训练中';
+    case 'failed':
+      return '训练失败';
+    default:
+      return '未训练';
+  }
+}
+
+/** 可问数状态中文标签 */
+export function queryabilityLabel(q: ScopeQueryability): string {
+  switch (q) {
+    case 'queryable':
+      return '可问数';
+    case 'partial':
+      return '部分可问数';
+    case 'unqueryable':
+      return '不可问数';
+    default:
+      return '—';
+  }
+}
+
+/** 可问数徽标颜色 */
+export function queryabilityColor(q: ScopeQueryability): { bg: string; color: string; border: string } {
+  switch (q) {
+    case 'queryable':
+      return { bg: '#dcfce7', color: '#15803d', border: '#86efac' };
+    case 'partial':
+      return { bg: '#fef9c3', color: '#a16207', border: '#fde047' };
+    case 'unqueryable':
+      return { bg: '#fee2e2', color: '#b91c1c', border: '#fca5a5' };
+    default:
+      return { bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0' };
+  }
+}
+
+/** 解读模式下联动展示的资产实际图表组件 */
+export interface LinkedComponent {
+  id: string;
+  name: string;
+  type: string;
+  datasetName?: string;
+  dimensions?: string[];
+  metrics?: string[];
+}
+
+/** 解读模式下，返回该资产在系统中实际已配置的图表组件（联动展示） */
+export function getScopeLinkedComponents(scope: QueryScope): LinkedComponent[] {
+  if (scope.type === 'report') {
+    // 报表本身是一张表格，没有关联的可视化组件，解读时只给结论
+    return [];
+  }
+  if (scope.type === 'dashboard') {
+    const d = systemDashboards.find((x) => x.id === scope.id);
+    return (d?.charts || []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      datasetName: c.datasetName,
+      dimensions: c.dimensions,
+      metrics: c.metrics,
+    }));
+  }
+  if (scope.type === 'data-screen') {
+    const s = systemDataScreens.find((x) => x.id === scope.id);
+    return (s?.components || []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      datasetName: c.datasetName,
+      dimensions: c.dimensions,
+      metrics: c.metrics,
+    }));
   }
   return [];
 }
@@ -307,6 +494,28 @@ export interface DatasetSchema {
   fieldSource?: 'real' | 'inferred';
   /** 更新时间 */
   updatedAt: string;
+  /** 训练状态 */
+  trainingStatus?: TrainingStatus;
+  /** 训练策略：全量 / 增量 */
+  trainingStrategy?: 'full' | 'incremental';
+  /** 训练内容：字段语义 / 行业黑话 / 指标口径 / 示例问数 */
+  trainingContent?: TrainingContent;
+  /** 训练触发方式：手动 / 每日 / 每周 */
+  trainingSchedule?: TrainingSchedule;
+  /** 最近一次训练成功时间 */
+  trainedAt?: string;
+  /** 训练失败原因 */
+  trainingFailedReason?: string;
+}
+
+export type TrainingStatus = 'untrained' | 'training' | 'trained' | 'failed';
+export type TrainingSchedule = 'manual' | 'daily' | 'weekly';
+
+export interface TrainingContent {
+  fields: boolean;
+  terms: boolean;
+  metrics: boolean;
+  examples: boolean;
 }
 
 /* ============================ 作用域（问数 / 解读） ============================ */
@@ -530,7 +739,7 @@ export const SEED_QUERY_LOGS: QueryLog[] = [
 const TERMS_KEY = 'dae-semantic-terms';
 const METRICS_KEY = 'dae-semantic-metrics';
 const EXAMPLES_KEY = 'dae-semantic-examples';
-const DATASETS_KEY = 'dae-semantic-datasets-v3';
+const DATASETS_KEY = 'dae-semantic-datasets-v5';
 const QUERY_LOGS_KEY = 'dae-query-logs';
 
 export function getTerms(): TerminologyItem[] {

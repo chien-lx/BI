@@ -29,7 +29,13 @@ import {
   PanelRight,
   ThumbsUp,
   ThumbsDown,
+  Database,
+  FileText,
+  Gauge,
+  Monitor,
+  Table2,
 } from 'lucide-react';
+import { SchemaPanel } from '../SchemaPanel';
 import {
   appendConversationLog,
   getAssistantConfig,
@@ -46,8 +52,14 @@ import {
   getMetrics,
   appendQueryLog,
   groupScopes,
+  getScopeQueryability,
+  getScopeDatasetDependencies,
+  queryabilityLabel,
+  queryabilityColor,
+  trainingStatusLabel,
   type QueryChartType,
   type QueryScope,
+  type ScopeType,
 } from '../../data/semanticLayer';
 import { runQuery, type QueryResult } from './queryEngine';
 import { QueryResultView } from './QueryResultView';
@@ -135,10 +147,12 @@ function saveCollapsed(collapsed: boolean) {
   localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
 }
 
+const QUERY_SESSION_ID = 'query-session';
+
 function createSession(title?: string): Session {
   const now = Date.now();
   return {
-    id: `s-${now}`,
+    id: `s-${now}-${Math.random().toString(36).slice(2, 6)}`,
     title: title || '新的对话',
     messages: [],
     createdAt: now,
@@ -165,11 +179,21 @@ export default function AIAssistantWidget({ setPage }: AIAssistantWidgetProps) {
   const [buttonCollapsed, setButtonCollapsed] = useState<boolean>(() => loadCollapsed());
   const [sessions, setSessions] = useState<Session[]>(() => {
     const existing = loadSessions();
-    return existing.length ? existing : [createSession()];
+    const list = existing.length ? existing : [createSession()];
+    if (!list.find((s) => s.id === QUERY_SESSION_ID)) {
+      list.push({
+        id: QUERY_SESSION_ID,
+        title: '智能问数',
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+    return list;
   });
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    const existing = loadSessions();
-    return existing.length ? existing[0].id : sessions[0]?.id;
+    const firstNonQuery = sessions.find((s) => s.id !== QUERY_SESSION_ID);
+    return firstNonQuery?.id || sessions[0]?.id;
   });
 
   const [input, setInput] = useState('');
@@ -185,12 +209,25 @@ export default function AIAssistantWidget({ setPage }: AIAssistantWidgetProps) {
   const [scopeId, setScopeId] = useState<string>(scopes[0]?.id || '');
   const activeScope: QueryScope | undefined = scopes.find((s) => s.id === scopeId) || scopes[0];
   const isQueryMode = mode === 'query';
+  const scopeDisabled = isQueryMode && activeScope ? getScopeQueryability(activeScope) === 'unqueryable' : false;
+
+  // 切换模式时同步 activeSessionId：qa 用普通会话，query 用独立问数会话
+  useEffect(() => {
+    if (isQueryMode) {
+      setActiveSessionId(QUERY_SESSION_ID);
+    } else {
+      const fallback = sessions.find((s) => s.id !== QUERY_SESSION_ID)?.id;
+      if (fallback && activeSessionId === QUERY_SESSION_ID) setActiveSessionId(fallback);
+    }
+  }, [isQueryMode, sessions, activeSessionId]);
 
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [buttonHover, setButtonHover] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [schemaOpen, setSchemaOpen] = useState(false);
+  const [schemaScope, setSchemaScope] = useState<QueryScope | null>(null);
 
   // 当前会话派生
   const activeSession = useMemo(
@@ -294,6 +331,22 @@ export default function AIAssistantWidget({ setPage }: AIAssistantWidgetProps) {
     };
   }, [onPointerMove, onPointerUp]);
 
+  // 监听外部「打开智能问数并选中指定资产」事件（报表/仪表盘/大屏/数据集列表点击 AI 图标触发）
+  useEffect(() => {
+    const handleOpenQuery = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { type: ScopeType; id: string; name: string } | undefined;
+      if (!detail?.id) return;
+      const target = scopes.find((s) => s.id === detail.id && s.type === detail.type);
+      if (target) {
+        setOpen(true);
+        setMode('query');
+        setScopeId(target.id);
+      }
+    };
+    window.addEventListener('open-ai-query', handleOpenQuery);
+    return () => window.removeEventListener('open-ai-query', handleOpenQuery);
+  }, [scopes]);
+
   /* ==================== 会话操作 ==================== */
   const updateSession = (sessionId: string, updater: (s: Session) => Session) => {
     setSessions((prev) => prev.map((s) => (s.id === sessionId ? updater({ ...s }) : s)));
@@ -346,11 +399,13 @@ export default function AIAssistantWidget({ setPage }: AIAssistantWidgetProps) {
   };
 
   const sortedSessions = useMemo(() => {
-    return [...sessions].sort((a, b) => {
-      if (a.pinned && !b.pinned) return -1;
-      if (!a.pinned && b.pinned) return 1;
-      return b.updatedAt - a.updatedAt;
-    });
+    return [...sessions]
+      .filter((s) => s.id !== QUERY_SESSION_ID)
+      .sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return b.updatedAt - a.updatedAt;
+      });
   }, [sessions]);
 
   const filteredSessions = useMemo(() => {
@@ -720,25 +775,36 @@ export default function AIAssistantWidget({ setPage }: AIAssistantWidgetProps) {
           display: 'flex',
         }}
       >
-        {/* 左侧会话列表 */}
-        <SessionSidebar
-          config={config}
-          sessions={filteredSessions}
-          activeSessionId={activeSessionId}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onNewSession={handleNewSession}
-          onSelectSession={setActiveSessionId}
-          onPin={handlePin}
-          onRenameStart={handleRenameStart}
-          onRenameSubmit={handleRenameSubmit}
-          onDelete={handleDeleteSession}
-          editingId={editingId}
-          editingTitle={editingTitle}
-          setEditingTitle={setEditingTitle}
-          menuOpenId={menuOpenId}
-          setMenuOpenId={setMenuOpenId}
-        />
+        {isQueryMode ? (
+          <QueryScopeSidebar
+            scopeGroups={scopeGroups}
+            scopeId={scopeId}
+            onSelect={setScopeId}
+            onViewSchema={(s) => {
+              setSchemaScope(s);
+              setSchemaOpen(true);
+            }}
+          />
+        ) : (
+          <SessionSidebar
+            config={config}
+            sessions={filteredSessions}
+            activeSessionId={activeSessionId}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onNewSession={handleNewSession}
+            onSelectSession={setActiveSessionId}
+            onPin={handlePin}
+            onRenameStart={handleRenameStart}
+            onRenameSubmit={handleRenameSubmit}
+            onDelete={handleDeleteSession}
+            editingId={editingId}
+            editingTitle={editingTitle}
+            setEditingTitle={setEditingTitle}
+            menuOpenId={menuOpenId}
+            setMenuOpenId={setMenuOpenId}
+          />
+        )}
 
         {/* 右侧对话主区域 */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -794,54 +860,21 @@ export default function AIAssistantWidget({ setPage }: AIAssistantWidgetProps) {
             <ModeTab active={isQueryMode} icon={<Sparkles size={14} />} label="问数助手" onClick={() => setMode('query')} />
           </div>
 
-          {/* 问数模式：作用域选择器（按类型分组下拉） */}
-          {isQueryMode && (
-            <div
-              style={{
-                flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 14px',
-                background: '#fff',
-                borderBottom: '1px solid #e2e8f0',
-              }}
-            >
-              <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>作用域</span>
-              <select
-                value={scopeId}
-                onChange={(e) => setScopeId(e.target.value)}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  padding: '6px 8px',
-                  borderRadius: 8,
-                  border: '1px solid #e2e8f0',
-                  background: '#fff',
-                  color: '#0f172a',
-                  fontSize: 13,
-                  cursor: 'pointer',
-                }}
-              >
-                {scopeGroups.map((g) => (
-                  <optgroup key={g.type} label={g.label}>
-                    {g.items.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-          )}
-
           {/* 消息区 */}
           <div ref={listRef} className="dae-scroll" style={{ flex: 1, overflowY: 'auto', padding: 16, background: '#f8fafc' }}>
+            {isQueryMode && activeScope && (
+              <ScopeInfoBar
+                scope={activeScope}
+                onViewSchema={(s) => {
+                  setSchemaScope(s);
+                  setSchemaOpen(true);
+                }}
+              />
+            )}
             {!config.enabled ? (
               <div style={noticeStyle}>助手已停用，请联系管理员在「AI 助手管理」中启用。</div>
             ) : activeSession.messages.length === 0 ? (
-              <WelcomeCard config={config} onPick={handleSend} queryMode={isQueryMode} />
+              <WelcomeCard config={config} onPick={handleSend} queryMode={isQueryMode} activeScope={activeScope} />
             ) : (
               activeSession.messages.map((m) => (
                 <div key={m.id} style={{ marginBottom: 16 }}>
@@ -894,7 +927,14 @@ export default function AIAssistantWidget({ setPage }: AIAssistantWidgetProps) {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKey}
-                  placeholder={isQueryMode ? '描述你想查的数据，例如：各地区的销量占比' : '您希望 AI 助手回答您什么问题？请直接输入'}
+                  disabled={scopeDisabled}
+                  placeholder={
+                    isQueryMode
+                      ? scopeDisabled
+                        ? '当前资产依赖数据集未训练，无法问数'
+                        : '描述你想查的数据，例如：各地区的销量占比'
+                      : '您希望 AI 助手回答您什么问题？请直接输入'
+                  }
                   rows={1}
                   style={{
                     flex: 1,
@@ -907,24 +947,26 @@ export default function AIAssistantWidget({ setPage }: AIAssistantWidgetProps) {
                     fontFamily: 'inherit',
                     outline: 'none',
                     maxHeight: 120,
+                    background: scopeDisabled ? '#f8fafc' : '#fff',
+                    color: scopeDisabled ? '#94a3b8' : '#0f172a',
                   }}
                 />
                 <button
                   onClick={() => handleSend()}
-                  disabled={!input.trim() || thinking}
+                  disabled={!input.trim() || thinking || scopeDisabled}
                   style={{
                     height: 40,
                     width: 40,
                     borderRadius: 10,
                     border: 'none',
-                    background: input.trim() && !thinking ? 'linear-gradient(135deg, #1677FF 0%, #0ea5e9 100%)' : '#cbd5e1',
+                    background: input.trim() && !thinking && !scopeDisabled ? 'linear-gradient(135deg, #1677FF 0%, #0ea5e9 100%)' : '#cbd5e1',
                     color: '#fff',
-                    cursor: input.trim() && !thinking ? 'pointer' : 'not-allowed',
+                    cursor: input.trim() && !thinking && !scopeDisabled ? 'pointer' : 'not-allowed',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
-                    boxShadow: input.trim() && !thinking ? '0 4px 12px rgba(22,119,255,0.25)' : 'none',
+                    boxShadow: input.trim() && !thinking && !scopeDisabled ? '0 4px 12px rgba(22,119,255,0.25)' : 'none',
                   }}
                 >
                   <Send size={18} />
@@ -937,6 +979,12 @@ export default function AIAssistantWidget({ setPage }: AIAssistantWidgetProps) {
           )}
         </div>
       </div>
+
+      <SchemaPanel
+        scope={schemaScope || activeScope || null}
+        open={schemaOpen}
+        onClose={() => setSchemaOpen(false)}
+      />
     </>
   );
 }
@@ -1378,12 +1426,24 @@ function BotAvatar({ config, size = 30, style }: { config: AssistantConfig; size
   );
 }
 
-function WelcomeCard({ config, onPick, queryMode }: { config: AssistantConfig; onPick: (t: string) => void; queryMode?: boolean }) {
+function WelcomeCard({
+  config,
+  onPick,
+  queryMode,
+  activeScope,
+}: {
+  config: AssistantConfig;
+  onPick: (t: string) => void;
+  queryMode?: boolean;
+  activeScope?: QueryScope;
+}) {
   const prompts = queryMode
     ? ['最近 7 天的 GMV 趋势', '各地区的销量占比', '销售额 Top 10 商品', '本月客单价是多少']
     : QUICK_PROMPTS;
+  const q = activeScope ? getScopeQueryability(activeScope) : 'na';
+  const qColor = queryabilityColor(q);
   const welcome = queryMode
-    ? '你好，我是智能问数助手 📊\n选择作用域（数据集 / 报表 / 大屏）后，用自然语言即可取数并自动生成图表。\n试试问我：各地区的销量占比？'
+    ? `你好，我是智能问数助手 📊\n当前已选定「${activeScope?.name || '未选择'}」。${q === 'queryable' ? '该资产已训练，可直接提问。' : q === 'partial' ? '该资产部分数据集未训练，问数结果可能不完整。' : q === 'unqueryable' ? '该资产依赖的数据集尚未训练，暂无法问数，请先在左侧数据集列表中训练。' : '请在左侧选择要问答的数据资产。'}`
     : config.welcomeMessage;
   return (
     <div>
@@ -1403,28 +1463,49 @@ function WelcomeCard({ config, onPick, queryMode }: { config: AssistantConfig; o
           }}
         >
           {welcome}
+          {queryMode && activeScope && q !== 'na' && (
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  background: qColor.bg,
+                  color: qColor.color,
+                  border: `1px solid ${qColor.border}`,
+                  fontWeight: 500,
+                }}
+              >
+                {queryabilityLabel(q)}
+              </span>
+              <span style={{ fontSize: 11, color: '#64748b' }}>
+                {activeScope.type === 'dataset' ? '数据集问数' : '智能解读'}
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <div style={{ fontSize: 12, color: '#64748b', margin: '6px 0 10px 2px', fontWeight: 500 }}>
-        {queryMode ? '试试这样问' : '热门问题'}
+        {queryMode ? (q === 'unqueryable' ? '请先训练数据集' : '试试这样问') : '热门问题'}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {prompts.map((q) => (
+        {prompts.map((qtext) => (
           <button
-            key={q}
-            onClick={() => onPick(q)}
+            key={qtext}
+            onClick={() => onPick(qtext)}
+            disabled={queryMode && q === 'unqueryable'}
             style={{
               border: '1px solid #bfdbfe',
               background: '#fff',
               borderRadius: 999,
               padding: '7px 13px',
               fontSize: 12.5,
-              color: '#1677FF',
-              cursor: 'pointer',
+              color: queryMode && q === 'unqueryable' ? '#94a3b8' : '#1677FF',
+              cursor: queryMode && q === 'unqueryable' ? 'not-allowed' : 'pointer',
               fontWeight: 500,
             }}
           >
-            {q}
+            {qtext}
           </button>
         ))}
       </div>
@@ -1703,5 +1784,307 @@ function TypingDots() {
       ))}
       <style>{`@keyframes dae-blink{0%,80%,100%{opacity:0.25}40%{opacity:1}}`}</style>
     </span>
+  );
+}
+
+const SCOPE_ICONS: Record<QueryScope['type'], React.ElementType> = {
+  dataset: Database,
+  report: FileText,
+  dashboard: Gauge,
+  'data-screen': Monitor,
+};
+
+function QueryScopeSidebar({
+  scopeGroups,
+  scopeId,
+  onSelect,
+  onViewSchema,
+}: {
+  scopeGroups: { type: string; label: string; items: QueryScope[] }[];
+  scopeId: string;
+  onSelect: (id: string) => void;
+  onViewSchema?: (scope: QueryScope) => void;
+}) {
+  const [searchText, setSearchText] = useState('');
+  const [showAll, setShowAll] = useState(false);
+
+  const filteredGroups = useMemo(() => {
+    const text = searchText.trim().toLowerCase();
+    return scopeGroups
+      .map((g) => ({
+        ...g,
+        items: g.items.filter((s) => {
+          const matchText = !text || s.name.toLowerCase().includes(text);
+          const q = getScopeQueryability(s);
+          const matchQueryable = showAll || q === 'queryable' || q === 'partial';
+          return matchText && matchQueryable;
+        }),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [scopeGroups, searchText, showAll]);
+
+  useEffect(() => {
+    const visible = filteredGroups.flatMap((g) => g.items);
+    if (visible.length && !visible.find((s) => s.id === scopeId)) {
+      onSelect(visible[0].id);
+    }
+  }, [filteredGroups, scopeId, onSelect]);
+
+  return (
+    <div
+      style={{
+        width: SIDEBAR_WIDTH,
+        flexShrink: 0,
+        borderRight: '1px solid #e2e8f0',
+        background: '#f8fafc',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #1677FF 0%, #0ea5e9 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+            }}
+          >
+            <Sparkles size={16} />
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>智能问数</div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>选择资产后提问</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+          <Search size={14} style={{ color: '#94a3b8', flexShrink: 0 }} />
+          <input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="搜索资产名称"
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              fontSize: 12.5,
+              color: '#0f172a',
+              minWidth: 0,
+            }}
+          />
+        </div>
+      </div>
+      <div style={{ padding: '10px 12px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 11, color: '#64748b' }}>{showAll ? '展示全部资产' : '仅展示可问数资产'}</span>
+        <button
+          onClick={() => setShowAll((v) => !v)}
+          style={{
+            fontSize: 11,
+            color: showAll ? '#1677FF' : '#64748b',
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: 500,
+          }}
+        >
+          {showAll ? '只看可问数' : '显示全部'}
+        </button>
+      </div>
+      <div className="dae-scroll" style={{ flex: 1, overflowY: 'auto', padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {filteredGroups.map((g) => (
+          <div key={g.type}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', padding: '0 2px 6px', letterSpacing: 1 }}>{g.label}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {g.items.map((s) => {
+                const Icon = SCOPE_ICONS[s.type as QueryScope['type']];
+                const active = s.id === scopeId;
+                const q = getScopeQueryability(s);
+                const qColor = queryabilityColor(q);
+                const disabled = q === 'unqueryable';
+                return (
+                  <div
+                    key={s.id}
+                    title={disabled ? '依赖数据集未训练，无法问数' : '点击选择该资产进行问数'}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '8px 8px 8px 10px',
+                      borderRadius: 8,
+                      border: active ? '1px solid #1677FF' : '1px solid #e2e8f0',
+                      background: active ? '#eff6ff' : disabled ? '#f8fafc' : '#fff',
+                      opacity: disabled ? 0.7 : 1,
+                    }}
+                  >
+                    <button
+                      onClick={() => !disabled && onSelect(s.id)}
+                      disabled={disabled}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        border: 'none',
+                        background: 'transparent',
+                        padding: 0,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        textAlign: 'left',
+                        color: active ? '#075985' : disabled ? '#94a3b8' : '#334155',
+                        fontSize: 13,
+                      }}
+                    >
+                      <Icon size={15} style={{ color: active ? '#1677FF' : disabled ? '#cbd5e1' : '#94a3b8', flexShrink: 0 }} />
+                      <div style={{ lineHeight: 1.25, flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                          {q !== 'na' && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                padding: '1px 5px',
+                                borderRadius: 999,
+                                background: qColor.bg,
+                                color: qColor.color,
+                                border: `1px solid ${qColor.border}`,
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {queryabilityLabel(q)}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: disabled ? '#cbd5e1' : '#94a3b8' }}>{s.type === 'dataset' ? '数据集问数' : '智能解读'}</div>
+                      </div>
+                    </button>
+                    {onViewSchema && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewSchema(s);
+                        }}
+                        title="查看数据详情"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: 24,
+                          height: 24,
+                          borderRadius: 6,
+                          border: '1px solid #e2e8f0',
+                          background: '#fff',
+                          color: '#64748b',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Table2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScopeInfoBar({
+  scope,
+  onViewSchema,
+}: {
+  scope: QueryScope;
+  onViewSchema?: (scope: QueryScope) => void;
+}) {
+  const q = getScopeQueryability(scope);
+  const qColor = queryabilityColor(q);
+  const deps = getScopeDatasetDependencies(scope);
+  const depDatasets = getDatasets().filter((d) => deps.includes(d.id));
+  const tip =
+    q === 'unqueryable'
+      ? `以下依赖数据集未训练：${depDatasets
+          .filter((d) => d.trainingStatus !== 'trained')
+          .map((d) => `${d.datasetName}（${trainingStatusLabel(d.trainingStatus)}）`)
+          .join('、')}`
+      : q === 'partial'
+        ? `部分依赖数据集未训练：${depDatasets
+            .filter((d) => d.trainingStatus !== 'trained')
+            .map((d) => `${d.datasetName}（${trainingStatusLabel(d.trainingStatus)}）`)
+            .join('、')}`
+        : '依赖数据集已全部训练';
+  return (
+    <div
+      style={{
+        marginBottom: 14,
+        padding: '10px 12px',
+        borderRadius: 10,
+        background: '#fff',
+        border: '1px solid #e2e8f0',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scope.name}</span>
+          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 400, flexShrink: 0 }}>
+            {scope.type === 'dataset' ? '数据集' : scope.type === 'report' ? '报表' : scope.type === 'dashboard' ? '仪表盘' : '数据大屏'}
+          </span>
+        </div>
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{tip}</div>
+      </div>
+      {q !== 'na' && (
+        <span
+          title={tip}
+          style={{
+            fontSize: 11,
+            padding: '3px 9px',
+            borderRadius: 999,
+            background: qColor.bg,
+            color: qColor.color,
+            border: `1px solid ${qColor.border}`,
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          {queryabilityLabel(q)}
+        </span>
+      )}
+      {onViewSchema && (
+        <button
+          onClick={() => onViewSchema(scope)}
+          title="查看数据详情"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '4px 9px',
+            borderRadius: 6,
+            border: '1px solid #e2e8f0',
+            background: '#fff',
+            color: '#64748b',
+            fontSize: 11.5,
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >
+          <Table2 size={12} />
+          数据详情
+        </button>
+      )}
+    </div>
   );
 }

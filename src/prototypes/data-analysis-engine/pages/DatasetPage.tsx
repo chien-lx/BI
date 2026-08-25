@@ -1,8 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, FileSpreadsheet, Eye, Pencil, Trash2, ShieldCheck, Copy, Settings } from 'lucide-react';
+import { Plus, FileSpreadsheet, Eye, Pencil, Trash2, ShieldCheck, Copy, Settings, Train, Sparkles } from 'lucide-react';
+import {
+  getDatasets,
+  isDatasetTrained,
+  markDatasetTraining,
+  finishDatasetTraining,
+  failDatasetTraining,
+  trainingStatusLabel,
+  type TrainingContent,
+} from '../data/semanticLayer';
 import PageHeader from '../components/PageHeader';
 import SearchFilter from '../components/SearchFilter';
 import Drawer from '../components/Drawer';
+import { SchemaPanel } from '../components/SchemaPanel';
 import IconAction from '../components/IconAction';
 import DeleteConfirm from '../components/DeleteConfirm';
 import UserPermSelect from '../components/UserPermSelect';
@@ -31,17 +41,33 @@ export default function DatasetPage() {
   const [jumpPage, setJumpPage] = useState('');
   const [viewPerm, setViewPerm] = useState<string[]>([]);
   const [managePerm, setManagePerm] = useState<string[]>([]);
-  const [viewOpen, setViewOpen] = useState(false);
-  const [viewItem, setViewItem] = useState<Dataset | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewItem, setPreviewItem] = useState<Dataset | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyTarget, setCopyTarget] = useState<Dataset | null>(null);
   const [copyName, setCopyName] = useState('');
   const [copyViewPerm, setCopyViewPerm] = useState<string[]>([]);
   const [copyManagePerm, setCopyManagePerm] = useState<string[]>([]);
 
-  const openView = (item: Dataset) => {
-    setViewItem(item);
-    setViewOpen(true);
+  const [trainOpen, setTrainOpen] = useState(false);
+  const [trainTarget, setTrainTarget] = useState<Dataset | null>(null);
+  const [trainStrategy, setTrainStrategy] = useState<'full' | 'incremental'>('incremental');
+  const [trainContent, setTrainContent] = useState<TrainingContent>({ fields: true, terms: true, metrics: true, examples: true });
+  const [trainSchedule, setTrainSchedule] = useState<'manual' | 'daily' | 'weekly'>('manual');
+  const [trainingIds, setTrainingIds] = useState<Set<string>>(new Set());
+
+  const [semanticRefresh, setSemanticRefresh] = useState(0);
+
+  const semanticDatasets = useMemo(() => getDatasets(), [semanticRefresh]);
+  const trainingStatusMap = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof isDatasetTrained>>();
+    semanticDatasets.forEach((d) => map.set(d.id, d.trainingStatus === 'trained'));
+    return map;
+  }, [semanticDatasets]);
+
+  const openPreview = (item: Dataset) => {
+    setPreviewItem(item);
+    setPreviewOpen(true);
   };
 
   const filtered = useMemo(() => {
@@ -115,6 +141,85 @@ export default function DatasetPage() {
     setCopyManagePerm([]);
   };
 
+  const openTrain = (item: Dataset) => {
+    setTrainTarget(item);
+    setTrainStrategy('incremental');
+    setTrainContent({ fields: true, terms: true, metrics: true, examples: true });
+    setTrainSchedule('manual');
+    setTrainOpen(true);
+  };
+
+  const closeTrain = () => {
+    setTrainOpen(false);
+    setTrainTarget(null);
+  };
+
+  const submitTrain = () => {
+    if (!trainTarget) return;
+    const id = trainTarget.id;
+    markDatasetTraining(id);
+    setTrainingIds((prev) => new Set(prev).add(id));
+    setSemanticRefresh((n) => n + 1);
+    closeTrain();
+
+    // 模拟训练耗时
+    window.setTimeout(() => {
+      finishDatasetTraining(id, { strategy: trainStrategy, content: trainContent, schedule: trainSchedule });
+      setTrainingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setSemanticRefresh((n) => n + 1);
+    }, 1500 + Math.random() * 1000);
+  };
+
+  const openDatasetQuery = (item: Dataset) => {
+    window.dispatchEvent(
+      new CustomEvent('open-ai-query', {
+        detail: { type: 'dataset', id: item.id, name: item.name },
+      })
+    );
+  };
+
+  const trainBadge = (item: Dataset) => {
+    const status = trainingIds.has(item.id) ? 'training' : trainingStatusMap.get(item.id) ? 'trained' : 'untrained';
+    if (status === 'trained') {
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span className="dae-tag dae-tag-green" style={{ whiteSpace: 'nowrap' }}>已训练</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              openDatasetQuery(item);
+            }}
+            title="智能问数"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 20,
+              height: 20,
+              borderRadius: 5,
+              border: 'none',
+              background: '#1677FF',
+              color: '#fff',
+              cursor: 'pointer',
+              padding: 0,
+              flexShrink: 0,
+            }}
+          >
+            <Sparkles size={12} />
+          </button>
+        </span>
+      );
+    }
+    if (status === 'training') {
+      return <span className="dae-tag dae-tag-blue" style={{ whiteSpace: 'nowrap' }}>训练中</span>;
+    }
+    return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 'var(--dae-radius-sm)', fontSize: 12, lineHeight: '20px', background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>未训练</span>;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <PageHeader
@@ -154,8 +259,9 @@ export default function DatasetPage() {
                 <th style={thStyle}>更新人</th>
                 <th style={thStyle}>更新时间</th>
                 <th style={thStyle}>状态</th>
+                <th style={thStyle}>训练状态</th>
                 <th style={thStyle}>创建时间</th>
-                <th style={{ ...thStyle, width: 200 }}>操作</th>
+                <th style={{ ...thStyle, width: 240 }}>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -181,13 +287,15 @@ export default function DatasetPage() {
                       </span>
                     )}
                   </td>
+                  <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>{trainBadge(item)}</td>
                   <td title={item.createdAt} style={tdStyle}>{item.createdAt}</td>
                   <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                     <div className="dae-table-actions">
                       {/* Switch 开关：上下线切换 */}
                       <StatusSwitch status={item.status} onToggle={() => toggleStatus(item)} />
-                      <IconAction icon={<Eye size={16} />} label="查看" onClick={() => openView(item)} />
+                      <IconAction icon={<Eye size={16} />} label="预览" onClick={() => openPreview(item)} />
                       <IconAction icon={<Pencil size={16} />} label="编辑" onClick={() => openModal(item)} />
+                      <IconAction icon={<Train size={16} />} label="训练" onClick={() => openTrain(item)} />
                       <IconAction icon={<Copy size={16} />} label="复制" onClick={() => openCopy(item)} />
                       <IconAction icon={<Settings size={16} />} label="数据集配置" onClick={() => { window.location.hash = '#page=dataset-config'; }} />
                       <IconAction icon={<Trash2 size={16} />} label="删除" onClick={() => openDelete(item)} />
@@ -324,40 +432,12 @@ export default function DatasetPage() {
         </div>
       </Drawer>
 
-      {/* 查看 */}
-      <Drawer
-        open={viewOpen}
-        title="查看详情"
-        onClose={() => setViewOpen(false)}
-        footer={
-          <button className="dae-btn dae-btn-secondary" onClick={() => setViewOpen(false)}>关闭</button>
-        }
-      >
-        {viewItem && (
-          <div>
-            <div className="dae-form-group">
-              <label>名称</label>
-              <div className="dae-input" style={{ background: 'var(--dae-surface)', cursor: 'default' }}>{viewItem.name}</div>
-            </div>
-            <div className="dae-form-group">
-              <label>创建人</label>
-              <div className="dae-input" style={{ background: 'var(--dae-surface)', cursor: 'default' }}>{viewItem.owner}</div>
-            </div>
-            <div className="dae-form-group">
-              <label>修改人</label>
-              <div className="dae-input" style={{ background: 'var(--dae-surface)', cursor: 'default' }}>{viewItem.modifier}</div>
-            </div>
-            <div className="dae-form-group">
-              <label>修改时间</label>
-              <div className="dae-input" style={{ background: 'var(--dae-surface)', cursor: 'default' }}>{viewItem.updatedAt}</div>
-            </div>
-            <div className="dae-form-group">
-              <label>数据源</label>
-              <div className="dae-input" style={{ background: 'var(--dae-surface)', cursor: 'default' }}>{viewItem.sourceName}</div>
-            </div>
-          </div>
-        )}
-      </Drawer>
+      {/* 预览：当前页面弹窗展示数据集结构与数据样例 */}
+      <SchemaPanel
+        scope={previewItem ? { type: 'dataset', id: previewItem.id, name: previewItem.name, datasetId: previewItem.id } : null}
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+      />
 
       {/* 复制数据集 */}
       <Drawer
@@ -377,6 +457,74 @@ export default function DatasetPage() {
         </div>
         <UserPermSelect label="查看权限" selected={copyViewPerm} onChange={setCopyViewPerm} />
         <UserPermSelect label="管理权限" selected={copyManagePerm} onChange={setCopyManagePerm} />
+      </Drawer>
+
+      {/* 训练数据集 */}
+      <Drawer
+        open={trainOpen}
+        title={`训练数据集：${trainTarget?.name || ''}`}
+        onClose={closeTrain}
+        footer={
+          <>
+            <button className="dae-btn dae-btn-secondary" onClick={closeTrain}>取消</button>
+            <button className="dae-btn dae-btn-primary" onClick={submitTrain}>开始训练</button>
+          </>
+        }
+      >
+        {trainTarget && (
+          <div>
+            <div style={{ background: '#eff6ff', color: '#1d4ed8', padding: '10px 12px', borderRadius: 8, fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>
+              训练会把语义层设置（字段语义、行业黑话、指标口径、示例问数）应用到该数据集，使其可被智能问数识别。数据实时更新时，可选手动或周期增量训练避免全量开销。
+            </div>
+            <div className="dae-form-group">
+              <label>训练策略</label>
+              <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="radio" name="strategy" checked={trainStrategy === 'incremental'} onChange={() => setTrainStrategy('incremental')} />
+                  增量训练（仅更新变化部分，资源占用低）
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="radio" name="strategy" checked={trainStrategy === 'full'} onChange={() => setTrainStrategy('full')} />
+                  全量训练（重建完整语义，资源占用高）
+                </label>
+              </div>
+            </div>
+            <div className="dae-form-group">
+              <label>训练内容（直接应用语义层设置，无需额外关联）</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={trainContent.fields} onChange={(e) => setTrainContent({ ...trainContent, fields: e.target.checked })} />
+                  字段语义（必须）
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={trainContent.terms} onChange={(e) => setTrainContent({ ...trainContent, terms: e.target.checked })} />
+                  行业黑话 / 同义词
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={trainContent.metrics} onChange={(e) => setTrainContent({ ...trainContent, metrics: e.target.checked })} />
+                  指标口径
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={trainContent.examples} onChange={(e) => setTrainContent({ ...trainContent, examples: e.target.checked })} />
+                  示例问数
+                </label>
+              </div>
+            </div>
+            <div className="dae-form-group">
+              <label>触发方式</label>
+              <select
+                className="dae-input"
+                value={trainSchedule}
+                onChange={(e) => setTrainSchedule(e.target.value as 'manual' | 'daily' | 'weekly')}
+                style={{ marginTop: 6 }}
+              >
+                <option value="manual">手动触发（本次立即执行）</option>
+                <option value="daily">每日自动增量训练</option>
+                <option value="weekly">每周自动增量训练</option>
+              </select>
+            </div>
+          </div>
+        )}
       </Drawer>
 
       <DeleteConfirm
